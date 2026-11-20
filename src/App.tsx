@@ -35,7 +35,9 @@ import { createDefaultSampleState, DEMO_SAMPLE_TEXT } from './data/sampleData';
 import {
   deletePersonFromCloud,
   getUserDisplayLabel,
+  isSyntheticLoginEmail,
   logoutFromFirebase,
+  reloadFirebaseUser,
   savePersonToCloud,
   subscribeAuthChanges,
   subscribeUserPeople,
@@ -95,6 +97,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState('');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authRevision, setAuthRevision] = useState(0);
   const [isGuestMode, setIsGuestMode] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -343,6 +346,16 @@ export default function App() {
     }
   }, [currentUser, isSyncing, showToast]);
 
+  const handleRefreshAccountStatus = useCallback(async () => {
+    if (!currentUser) return null;
+    const res = await reloadFirebaseUser(currentUser);
+    setAuthRevision((v) => v + 1);
+    if (!res.requiresRelogin) {
+      updateUserProfileInCloud(currentUser).catch(() => {});
+    }
+    return res;
+  }, [currentUser]);
+
   // Auth & RTDB subscription
   useEffect(() => {
     let unsubAuth: (() => void) | null = null;
@@ -362,6 +375,17 @@ export default function App() {
           loadLocalScope(uidStr);
           setCloudStatus('connecting');
           updateUserProfileInCloud(user).catch(() => {});
+
+          if (!user.emailVerified || isSyntheticLoginEmail(user.email)) {
+            reloadFirebaseUser(user)
+              .then((res) => {
+                if (!res.requiresRelogin) {
+                  setAuthRevision((v) => v + 1);
+                  updateUserProfileInCloud(user).catch(() => {});
+                }
+              })
+              .catch(() => {});
+          }
 
           let firstSnapshot = true;
           cloudUnsubRef.current = subscribeUserPeople(
@@ -1268,9 +1292,11 @@ export default function App() {
           <AccountModal
             open={accountOpen}
             user={currentUser}
+            authRevision={authRevision}
             pendingCount={pendingCount}
             isSyncing={isSyncing}
             onClose={() => setAccountOpen(false)}
+            onRefreshAccount={handleRefreshAccountStatus}
             onManualSync={handleManualSync}
             onLogout={async () => {
               setAccountOpen(false);

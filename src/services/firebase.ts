@@ -14,6 +14,7 @@ import {
   reauthenticateWithCredential,
   verifyBeforeUpdateEmail,
   sendEmailVerification,
+  reload,
   type Auth,
   type User,
 } from '@firebase/auth';
@@ -212,6 +213,32 @@ export async function resendVerificationForUser(user: User): Promise<void> {
   const { auth } = getFirebaseServices();
   auth.languageCode = 'ru';
   await sendEmailVerification(user);
+}
+
+export async function reloadFirebaseUser(user: User): Promise<{
+  emailVerified: boolean;
+  email: string | null;
+  requiresRelogin?: boolean;
+}> {
+  try {
+    await reload(user);
+    await user.getIdToken(true).catch(() => {});
+    return {
+      emailVerified: Boolean(user.emailVerified),
+      email: user.email || null,
+      requiresRelogin: false,
+    };
+  } catch (err) {
+    const code = (err as { code?: string } | null)?.code || '';
+    if (code === 'auth/user-token-expired' || code === 'auth/invalid-user-token') {
+      return {
+        emailVerified: false,
+        email: user.email || null,
+        requiresRelogin: true,
+      };
+    }
+    throw err;
+  }
 }
 
 export function subscribeAuthChanges(cb: (user: User | null) => void): Unsubscribe {

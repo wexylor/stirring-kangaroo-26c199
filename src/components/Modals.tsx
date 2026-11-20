@@ -105,9 +105,15 @@ const ModalWrapper: React.FC<ModalBackdropProps> = ({
 interface AccountModalProps {
   open: boolean;
   user: User | null;
+  authRevision?: number;
   pendingCount: number;
   isSyncing: boolean;
   onClose: () => void;
+  onRefreshAccount?: () => Promise<{
+    emailVerified: boolean;
+    email: string | null;
+    requiresRelogin?: boolean;
+  } | null>;
   onManualSync: () => void;
   onLogout: () => void;
   onToast: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void;
@@ -116,9 +122,11 @@ interface AccountModalProps {
 export const AccountModal: React.FC<AccountModalProps> = ({
   open,
   user,
+  authRevision = 0,
   pendingCount,
   isSyncing,
   onClose,
+  onRefreshAccount,
   onManualSync,
   onLogout,
   onToast,
@@ -126,10 +134,37 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   const [newEmail, setNewEmail] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [binding, setBinding] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(false);
   const [bindMessage, setBindMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(
     null
   );
   const [showChangeEmail, setShowChangeEmail] = useState(false);
+
+  const runRefreshStatus = async (manual = false) => {
+    if (!user || !onRefreshAccount || checkingStatus) return;
+    setCheckingStatus(true);
+    try {
+      const res = await onRefreshAccount();
+      if (res?.requiresRelogin) {
+        setBindMessage({
+          type: 'success',
+          text: 'Почта подтверждена! Firebase обновил учётные данные — нажмите «Выйти» ниже и войдите заново с новым Email.',
+        });
+      } else if (manual) {
+        if (res?.emailVerified && !isSyntheticLoginEmail(res.email)) {
+          onToast('Email подтверждён!', 'success');
+        } else {
+          onToast('Пока ожидается подтверждение по ссылке из письма', 'info');
+        }
+      }
+    } catch (err) {
+      if (manual) {
+        onToast(getHumanFirebaseAuthError(err), 'error');
+      }
+    } finally {
+      setCheckingStatus(false);
+    }
+  };
 
   useEffect(() => {
     if (open) {
@@ -137,9 +172,33 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       setNewEmail('');
       setCurrentPassword('');
       setShowChangeEmail(false);
+      if (user && onRefreshAccount) {
+        void runRefreshStatus(false);
+      }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  useEffect(() => {
+    if (!open || !user || !onRefreshAccount) return;
+    if (user.emailVerified && !isSyntheticLoginEmail(user.email)) return;
+
+    const handleFocus = () => {
+      if (document.visibilityState === 'visible') {
+        void runRefreshStatus(false);
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, user, authRevision]);
+
+  // authRevision ensures re-evaluation after in-place reload(user)
+  void authRevision;
   const hasSyntheticLogin = user ? isSyntheticLoginEmail(user.email) : false;
   const loginShown =
     user?.email && user.email.endsWith('@notebook.app')
@@ -213,23 +272,42 @@ export const AccountModal: React.FC<AccountModalProps> = ({
             </div>
             <div className="flex justify-between gap-3 items-center">
               <span style={{ color: 'var(--text-secondary)' }}>Статус почты:</span>
-              {hasSyntheticLogin ? (
-                <span
-                  className="inline-flex items-center gap-1 text-xs font-semibold"
-                  style={{ color: 'var(--warning-text)' }}
-                >
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                  <span>Не привязана</span>
-                </span>
-              ) : (
-                <span
-                  className="inline-flex items-center gap-1 text-xs font-semibold"
-                  style={{ color: user.emailVerified ? 'var(--success-text)' : 'var(--warning-text)' }}
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>{user.emailVerified ? 'Подтверждена' : 'Ожидает подтверждения'}</span>
-                </span>
-              )}
+              <div className="inline-flex items-center gap-1.5">
+                {hasSyntheticLogin ? (
+                  <span
+                    className="inline-flex items-center gap-1 text-xs font-semibold"
+                    style={{ color: 'var(--warning-text)' }}
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    <span>Не привязана</span>
+                  </span>
+                ) : (
+                  <span
+                    className="inline-flex items-center gap-1 text-xs font-semibold"
+                    style={{ color: user.emailVerified ? 'var(--success-text)' : 'var(--warning-text)' }}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>{user.emailVerified ? 'Подтверждена' : 'Ожидает подтверждения'}</span>
+                  </span>
+                )}
+                {(hasSyntheticLogin || !user.emailVerified) && onRefreshAccount && (
+                  <button
+                    type="button"
+                    onClick={() => void runRefreshStatus(true)}
+                    disabled={checkingStatus}
+                    title="Проверить статус подтверждения почты"
+                    aria-label="Проверить статус подтверждения почты"
+                    className="p-1 rounded-md border transition-colors hover:brightness-110 disabled:opacity-50"
+                    style={{
+                      backgroundColor: 'var(--bg-elevated)',
+                      borderColor: 'var(--border-color)',
+                      color: 'var(--text-secondary)',
+                    }}
+                  >
+                    <RefreshCw className={`w-3 h-3 ${checkingStatus ? 'animate-spin' : ''}`} />
+                  </button>
+                )}
+              </div>
             </div>
             <div className="flex justify-between gap-3 items-center">
               <span style={{ color: 'var(--text-secondary)' }}>Облачная синхронизация:</span>

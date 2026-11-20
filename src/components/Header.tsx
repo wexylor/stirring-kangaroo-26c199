@@ -11,7 +11,6 @@ import {
   Pin,
   Plus,
   User as UserIcon,
-  FileDown,
 } from 'lucide-react';
 import type { CloudSyncStatus, Person } from '../types/notebook';
 import { getAvatarGradient, DEFAULT_GROUPS } from '../data/sampleData';
@@ -269,22 +268,6 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
               )}
             </div>
-
-            <a
-              href="/smart-notebook.html"
-              download="index.html"
-              aria-label="Скачать HTML"
-              title="Скачать автономный однофайловый index.html"
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-medium whitespace-nowrap transition-colors hover:brightness-110"
-              style={{
-                backgroundColor: 'var(--bg-surface)',
-                borderColor: 'var(--border-color)',
-                color: 'var(--text-secondary)',
-              }}
-            >
-              <FileDown className="w-3.5 h-3.5" />
-              <span className="hidden xl:inline">HTML</span>
-            </a>
 
             <button
               type="button"

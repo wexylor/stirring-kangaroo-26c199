@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, KeyRound, ArrowLeft, FileDown } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, ArrowLeft } from 'lucide-react';
 import {
   getHumanFirebaseAuthError,
   loginWithLoginOrEmail,
@@ -378,20 +378,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         >
           Продолжить локально на этом устройстве (без облака)
         </button>
-
-        <a
-          href="/smart-notebook.html"
-          download="index.html"
-          className="mt-2.5 w-full py-2 px-3 rounded-xl text-[12px] font-medium border flex items-center justify-center gap-1.5 transition-colors hover:brightness-110"
-          style={{
-            backgroundColor: 'transparent',
-            borderColor: 'var(--border-color)',
-            color: 'var(--text-secondary)',
-          }}
-        >
-          <FileDown className="w-3.5 h-3.5" />
-          <span>Скачать одним файлом (index.html)</span>
-        </a>
       </div>
     </div>
   );
