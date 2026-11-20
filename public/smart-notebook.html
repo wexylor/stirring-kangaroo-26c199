@@ -1,0 +1,3342 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Умный блокнот о людях — AI Досье и Таймлайн общения</title>
+  <style>
+    :root {
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-xl: 22px;
+      --transition: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    [data-theme="dark"] {
+      --bg-app: #0d1117;
+      --bg-header: rgba(13, 17, 23, 0.9);
+      --bg-surface: #161b22;
+      --bg-elevated: #1f2630;
+      --bg-input: #0d1117;
+      --bg-fact: rgba(31, 38, 48, 0.72);
+      --text-primary: #f0f6fc;
+      --text-secondary: #9ea7b3;
+      --text-muted: #6e7681;
+      --border-color: rgba(240, 246, 252, 0.11);
+      --border-hover: rgba(139, 92, 246, 0.45);
+      --accent: #7c3aed;
+      --accent-hover: #8b5cf6;
+      --accent-gradient: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+      --accent-soft: rgba(124, 58, 237, 0.14);
+      --accent-text: #c4b5fd;
+      --success-bg: rgba(16, 185, 129, 0.12);
+      --success-border: rgba(16, 185, 129, 0.35);
+      --success-text: #6ee7b7;
+      --warning-bg: rgba(245, 158, 11, 0.12);
+      --warning-border: rgba(245, 158, 11, 0.35);
+      --warning-text: #fcd34d;
+      --danger-bg: rgba(244, 63, 94, 0.12);
+      --danger-border: rgba(244, 63, 94, 0.35);
+      --danger-text: #fda4af;
+      --info-bg: rgba(14, 165, 233, 0.12);
+      --info-border: rgba(14, 165, 233, 0.35);
+      --info-text: #7dd3fc;
+      --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
+      --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
+      --shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.55);
+    }
+
+    [data-theme="light"] {
+      --bg-app: #f4f6fa;
+      --bg-header: rgba(255, 255, 255, 0.92);
+      --bg-surface: #ffffff;
+      --bg-elevated: #eef2f7;
+      --bg-input: #f8fafc;
+      --bg-fact: #f8fafc;
+      --text-primary: #0f172a;
+      --text-secondary: #475569;
+      --text-muted: #64748b;
+      --border-color: rgba(15, 23, 42, 0.1);
+      --border-hover: rgba(124, 58, 237, 0.45);
+      --accent: #6d28d9;
+      --accent-hover: #7c3aed;
+      --accent-gradient: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+      --accent-soft: rgba(124, 58, 237, 0.09);
+      --accent-text: #6d28d9;
+      --success-bg: rgba(16, 185, 129, 0.1);
+      --success-border: rgba(16, 185, 129, 0.35);
+      --success-text: #047857;
+      --warning-bg: rgba(245, 158, 11, 0.12);
+      --warning-border: rgba(245, 158, 11, 0.35);
+      --warning-text: #b45309;
+      --danger-bg: rgba(244, 63, 94, 0.1);
+      --danger-border: rgba(244, 63, 94, 0.35);
+      --danger-text: #be123c;
+      --info-bg: rgba(14, 165, 233, 0.1);
+      --info-border: rgba(14, 165, 233, 0.35);
+      --info-text: #0369a1;
+      --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.04);
+      --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.08);
+      --shadow-lg: 0 20px 50px rgba(15, 23, 42, 0.18);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg-app);
+      color: var(--text-primary);
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      transition: background-color 0.25s ease, color 0.25s ease;
+    }
+
+    button, input, textarea, select { font-family: inherit; color: inherit; }
+    button { cursor: pointer; border: none; background: transparent; transition: all var(--transition); }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .container { width: 100%; max-width: 1240px; margin: 0 auto; padding: 0 16px; }
+    .hidden { display: none !important; }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+
+    /* ЭКРАН АВТОРИЗАЦИИ */
+    .auth-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+    .auth-card {
+      width: 100%; max-width: 430px; background: var(--bg-surface); border: 1px solid var(--border-color);
+      border-radius: var(--radius-xl); padding: 28px; box-shadow: var(--shadow-lg); animation: popIn 0.28s ease forwards;
+    }
+    .auth-brand { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 20px; }
+    .auth-logo {
+      width: 52px; height: 52px; border-radius: 15px; background: var(--accent-gradient); color: #fff;
+      display: flex; align-items: center; justify-content: center; font-size: 26px;
+      box-shadow: 0 8px 22px rgba(124, 58, 237, 0.35); margin-bottom: 12px;
+    }
+    .auth-title { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+    .auth-subtitle { font-size: 13px; color: var(--text-secondary); margin-top: 4px; line-height: 1.45; }
+    .auth-switcher {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 5px;
+      border-radius: var(--radius-md); background: var(--bg-elevated); margin-bottom: 18px;
+    }
+    .auth-switch-btn { padding: 9px 12px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+    .auth-switch-btn.active { background: var(--bg-surface); color: var(--text-primary); box-shadow: var(--shadow-sm); }
+    .auth-error {
+      padding: 10px 12px; border-radius: var(--radius-md); background: var(--danger-bg);
+      border: 1px solid var(--danger-border); color: var(--danger-text);
+      font-size: 12.5px; line-height: 1.45; margin-bottom: 14px; word-break: break-word;
+    }
+    .auth-success {
+      padding: 10px 12px; border-radius: var(--radius-md); background: var(--success-bg);
+      border: 1px solid var(--success-border); color: var(--success-text);
+      font-size: 12.5px; line-height: 1.45; margin-bottom: 14px; word-break: break-word;
+    }
+    .auth-hint { font-size: 11.5px; color: var(--text-muted); margin-top: 5px; line-height: 1.4; }
+    .password-label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .link-btn { font-size: 12px; font-weight: 600; color: var(--accent-text); }
+    .link-btn:hover { text-decoration: underline; }
+    .password-input-wrap { position: relative; display: flex; align-items: center; }
+    .password-input-wrap .form-input { padding-right: 42px; }
+    .password-toggle-btn {
+      position: absolute; right: 6px; width: 32px; height: 32px; border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center; color: var(--text-secondary);
+    }
+    .password-toggle-btn:hover { background: var(--bg-elevated); color: var(--text-primary); }
+    .password-toggle-btn svg { width: 20px; height: 20px; fill: currentColor; pointer-events: none; }
+    .auth-divider { display: flex; align-items: center; gap: 10px; margin: 18px 0 14px 0; font-size: 11.5px; color: var(--text-muted); }
+    .auth-divider::before, .auth-divider::after { content: ""; flex: 1; height: 1px; background: var(--border-color); }
+
+    /* ШАПКА, ГРУППЫ И ВКЛАДКИ */
+    .app-header {
+      position: sticky; top: 0; z-index: 30; background: var(--bg-header);
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--border-color);
+    }
+    .header-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-logo {
+      width: 36px; height: 36px; border-radius: 10px; background: var(--accent-gradient); color: #fff;
+      display: flex; align-items: center; justify-content: center; font-size: 18px;
+      box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35); flex-shrink: 0;
+    }
+    .brand-title { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .cloud-pill {
+      display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px;
+      font-size: 11px; font-weight: 600; background: var(--warning-bg); color: var(--warning-text);
+      border: 1px solid var(--warning-border); white-space: nowrap;
+    }
+    .cloud-pill.is-online { background: var(--success-bg); color: var(--success-text); border-color: var(--success-border); }
+    .cloud-pill.is-error { background: var(--danger-bg); color: var(--danger-text); border-color: var(--danger-border); }
+    .cloud-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+    .sync-now-btn {
+      display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 8px;
+      font-size: 11px; font-weight: 600; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-secondary);
+    }
+    .sync-now-btn.is-pending { background: var(--warning-bg); border-color: var(--warning-border); color: var(--warning-text); }
+    .sync-now-btn:hover { border-color: var(--border-hover); color: var(--text-primary); }
+    .brand-subtitle { font-size: 11.5px; color: var(--text-secondary); }
+    .header-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+    .account-pill {
+      display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border-radius: var(--radius-md);
+      background: var(--accent-soft); border: 1px solid rgba(124, 58, 237, 0.35); color: var(--accent-text);
+      font-size: 12px; font-weight: 600; white-space: nowrap;
+    }
+    .account-pill:hover { background: rgba(124, 58, 237, 0.24); color: var(--text-primary); }
+    .search-box { position: relative; display: flex; align-items: center; }
+    .search-input {
+      width: 175px; padding: 7px 26px 7px 30px; border-radius: var(--radius-md);
+      background: var(--bg-surface); border: 1px solid var(--border-color); font-size: 13px; outline: none;
+      transition: border-color var(--transition), width var(--transition);
+    }
+    .search-input:focus { border-color: var(--accent); width: 205px; }
+    .search-icon { position: absolute; left: 9px; font-size: 12px; color: var(--text-muted); pointer-events: none; }
+    .search-clear { position: absolute; right: 7px; font-size: 14px; color: var(--text-muted); padding: 2px 4px; display: none; }
+    .search-clear.visible { display: inline-flex; }
+    .tool-btn {
+      display: inline-flex; align-items: center; gap: 5px; padding: 7px 10px; border-radius: var(--radius-md);
+      background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-secondary);
+      font-size: 12px; font-weight: 500; white-space: nowrap;
+    }
+    .tool-btn:hover { color: var(--text-primary); border-color: var(--border-hover); background: var(--bg-elevated); }
+
+    .groups-bar { display: flex; align-items: center; gap: 6px; overflow-x: auto; padding: 2px 0 6px 0; scrollbar-width: thin; }
+    .groups-label { font-size: 11px; font-weight: 600; color: var(--text-muted); margin-right: 2px; flex-shrink: 0; }
+    .group-chip {
+      padding: 4px 10px; border-radius: 8px; font-size: 12px; font-weight: 500;
+      color: var(--text-secondary); border: 1px solid transparent; white-space: nowrap; flex-shrink: 0;
+    }
+    .group-chip:hover { color: var(--text-primary); background: var(--bg-surface); }
+    .group-chip.active { background: var(--accent-soft); color: var(--accent-text); border-color: rgba(124, 58, 237, 0.35); }
+
+    .tabs-bar { display: flex; align-items: center; gap: 8px; overflow-x: auto; padding: 2px 0 10px 0; scrollbar-width: thin; }
+    .tabs-list { display: flex; align-items: center; gap: 8px; }
+    .person-tab {
+      position: relative; display: inline-flex; align-items: center; gap: 8px; padding: 7px 13px;
+      border-radius: var(--radius-md); background: transparent; border: 1px solid transparent;
+      color: var(--text-secondary); font-size: 13px; font-weight: 500; white-space: nowrap; flex-shrink: 0;
+    }
+    .person-tab:hover { background: var(--bg-surface); color: var(--text-primary); }
+    .person-tab.active { background: var(--bg-surface); color: var(--text-primary); font-weight: 600; border-color: var(--border-hover); box-shadow: var(--shadow-sm); }
+    .person-tab.active::after {
+      content: ""; position: absolute; bottom: -1px; left: 14px; right: 14px; height: 2px;
+      border-radius: 99px; background: var(--accent-gradient);
+    }
+    .avatar-circle {
+      width: 24px; height: 24px; border-radius: 8px; color: #fff; font-size: 11px; font-weight: 700;
+      display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .tab-count { font-size: 11px; padding: 1px 7px; border-radius: 99px; background: var(--bg-elevated); color: var(--text-secondary); }
+    .person-tab.active .tab-count { background: var(--accent-soft); color: var(--accent-text); }
+    .tab-inactive-badge {
+      font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 6px;
+      background: var(--warning-bg); color: var(--warning-text);
+    }
+    .tab-match-badge {
+      font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 99px;
+      background: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border);
+    }
+    .add-person-btn {
+      display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: var(--radius-md);
+      background: var(--accent-soft); color: var(--accent-text); border: 1px dashed rgba(124, 58, 237, 0.45);
+      font-size: 13px; font-weight: 600; white-space: nowrap; flex-shrink: 0;
+    }
+    .add-person-btn:hover { background: rgba(124, 58, 237, 0.22); }
+
+    /* ОСНОВНОЕ ПРОСТРАНСТВО */
+    .main-area { flex: 1; padding-top: 20px; padding-bottom: 48px; display: flex; flex-direction: column; gap: 18px; }
+
+    .reminders-card {
+      background: var(--bg-surface); border: 1px solid var(--warning-border); border-radius: var(--radius-lg);
+      padding: 12px 16px; display: flex; flex-direction: column; gap: 8px;
+    }
+    .reminders-title { font-size: 12px; font-weight: 700; color: var(--warning-text); }
+    .reminders-list { display: flex; flex-wrap: wrap; gap: 8px; }
+    .reminder-btn {
+      display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: var(--radius-md);
+      background: var(--warning-bg); border: 1px solid var(--warning-border); color: var(--text-primary);
+      font-size: 12.5px; text-align: left;
+    }
+    .reminder-btn:hover { filter: brightness(1.08); }
+
+    .profile-card {
+      background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg);
+      padding: 18px 20px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 14px;
+    }
+    .profile-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; }
+    .profile-info { display: flex; align-items: center; gap: 14px; min-width: 220px; flex: 1; }
+    .profile-avatar-lg {
+      width: 52px; height: 52px; border-radius: 15px; color: #fff; font-size: 20px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-md); flex-shrink: 0;
+    }
+    .profile-name-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .profile-name { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; cursor: pointer; }
+    .profile-name:hover { color: var(--accent-hover); }
+    .profile-subtitle { font-size: 13px; color: var(--text-secondary); margin-top: 2px; cursor: pointer; }
+    .profile-subtitle:hover { color: var(--text-primary); }
+    .pin-btn {
+      display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 8px;
+      font-size: 12px; font-weight: 600; background: var(--bg-elevated); border: 1px solid var(--border-color); color: var(--text-secondary);
+    }
+    .pin-btn.pinned { background: var(--warning-bg); border-color: var(--warning-border); color: var(--warning-text); }
+    .profile-meta-strip {
+      padding-top: 12px; border-top: 1px solid var(--border-color);
+      display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12px; color: var(--text-muted);
+    }
+    .profile-meta-strip strong { color: var(--text-secondary); }
+    .meta-select {
+      padding: 2px 8px; border-radius: 6px; background: var(--bg-elevated); border: 1px solid var(--border-color);
+      font-size: 12px; color: var(--text-primary); outline: none; cursor: pointer;
+    }
+    .profile-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      padding: 9px 14px; border-radius: var(--radius-md); font-size: 13px; font-weight: 600; white-space: nowrap;
+    }
+    .btn-primary { background: var(--accent-gradient); color: #fff; box-shadow: 0 4px 14px rgba(124, 58, 237, 0.3); }
+    .btn-primary:hover { filter: brightness(1.08); transform: translateY(-1px); }
+    .btn-secondary { background: var(--bg-elevated); color: var(--text-primary); border: 1px solid var(--border-color); }
+    .btn-secondary:hover { border-color: var(--border-hover); }
+    .btn-danger-ghost { color: var(--danger-text); background: var(--danger-bg); padding: 9px 12px; }
+
+    /* АНАЛИЗАТОР И СОВЕТНИК */
+    .analyzer-card {
+      background: var(--bg-surface); border: 1px solid rgba(124, 58, 237, 0.32);
+      border-radius: var(--radius-lg); padding: 18px 20px; box-shadow: var(--shadow-sm);
+    }
+    .analyzer-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+    .analyzer-title-wrap { display: flex; align-items: center; gap: 10px; }
+    .analyzer-icon {
+      width: 32px; height: 32px; border-radius: 10px; background: var(--accent-soft); color: var(--accent-text);
+      display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;
+    }
+    .analyzer-title { font-size: 15px; font-weight: 700; }
+    .analyzer-desc { font-size: 12px; color: var(--text-secondary); }
+    .sample-fill-btn {
+      font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: var(--radius-sm);
+      background: var(--accent-soft); color: var(--accent-text); border: 1px solid rgba(124, 58, 237, 0.25);
+    }
+    .analyzer-textarea {
+      width: 100%; min-height: 100px; padding: 14px; border-radius: var(--radius-md);
+      background: var(--bg-input); border: 1px solid var(--border-color); font-size: 14px; line-height: 1.55; resize: vertical; outline: none;
+    }
+    .analyzer-textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.16); }
+    .analyzer-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+    .shortcut-hint { font-size: 12px; color: var(--text-muted); }
+    .kbd {
+      display: inline-block; padding: 1px 6px; border-radius: 5px; background: var(--bg-elevated);
+      border: 1px solid var(--border-color); font-family: monospace; font-size: 11px; color: var(--text-secondary);
+    }
+    .analyzer-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
+    .advisor-bar { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--border-color); display: flex; flex-direction: column; gap: 10px; }
+    .advisor-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+    .advisor-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-right: 2px; }
+    .advisor-chip { padding: 5px 11px; border-radius: 999px; background: var(--bg-elevated); border: 1px solid var(--border-color); font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+    .advisor-chip:hover { border-color: var(--border-hover); color: var(--text-primary); background: var(--accent-soft); }
+    .advisor-form { display: flex; gap: 8px; }
+    .advisor-input { flex: 1; padding: 8px 12px; border-radius: var(--radius-md); background: var(--bg-input); border: 1px solid var(--border-color); font-size: 13px; outline: none; }
+    .advisor-input:focus { border-color: var(--accent); }
+    .advisor-answer {
+      padding: 12px 14px; border-radius: var(--radius-md); background: var(--accent-soft);
+      border: 1px solid rgba(124, 58, 237, 0.3); font-size: 13px; line-height: 1.55; color: var(--text-primary); white-space: pre-line;
+    }
+    .advisor-answer-header { display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; font-weight: 700; color: var(--accent-text); margin-bottom: 6px; }
+    .report-banner {
+      margin-top: 14px; padding: 12px 14px; border-radius: var(--radius-md); background: var(--success-bg);
+      border: 1px solid var(--success-border); color: var(--success-text);
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px;
+    }
+    .report-pills { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-weight: 600; }
+    .report-pill { padding: 2px 8px; border-radius: 999px; background: rgba(16, 185, 129, 0.16); font-size: 12px; }
+    .undo-btn { padding: 5px 10px; border-radius: 8px; background: rgba(16, 185, 129, 0.2); color: inherit; font-size: 12px; font-weight: 600; }
+
+    /* БАННЕР ФИЛЬТРА И СЕТКА КОЛОНОК */
+    .filter-active-banner {
+      padding: 10px 14px; border-radius: var(--radius-md); background: var(--warning-bg);
+      border: 1px solid var(--warning-border); color: var(--warning-text);
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px;
+    }
+    .filter-reset-btn {
+      padding: 5px 11px; border-radius: 8px; background: var(--bg-surface);
+      border: 1px solid var(--warning-border); color: var(--text-primary); font-size: 12px; font-weight: 600;
+    }
+    .columns-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 16px; align-items: start; }
+    .column-card {
+      background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg);
+      padding: 16px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 12px;
+    }
+    .column-card.is-new { border-color: rgba(124, 58, 237, 0.65); }
+    .column-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .column-title-group { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+    .column-icon { font-size: 18px; flex-shrink: 0; }
+    .column-title { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+    .column-count { font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
+    .badge-new { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 2px 7px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-text); border: 1px solid rgba(124, 58, 237, 0.3); }
+    .badge-new-fact { font-size: 9px; font-weight: 700; text-transform: uppercase; padding: 2px 6px; border-radius: 6px; background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success-border); }
+    .badge-inference { font-size: 9.5px; font-weight: 700; padding: 2px 6px; border-radius: 6px; background: rgba(245, 158, 11, 0.16); color: var(--warning-text); border: 1px solid var(--warning-border); white-space: nowrap; }
+    .badge-updated { font-size: 9.5px; font-weight: 700; padding: 2px 6px; border-radius: 6px; background: var(--info-bg); color: var(--info-text); border: 1px solid var(--info-border); white-space: nowrap; }
+    .icon-btn-sm { width: 26px; height: 26px; border-radius: 7px; color: var(--text-muted); display: inline-flex; align-items: center; justify-content: center; font-size: 15px; }
+    .icon-btn-sm:hover { background: var(--danger-bg); color: var(--danger-text); }
+    .facts-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+    .fact-item {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 9px 11px;
+      border-radius: var(--radius-md); background: var(--bg-fact); border: 1px solid transparent; font-size: 13px; line-height: 1.42;
+    }
+    .fact-item.is-new { background: var(--success-bg); border-color: var(--success-border); }
+    .fact-item.is-inference { background: rgba(245, 158, 11, 0.08); border-color: var(--warning-border); }
+    .fact-item.is-updated { background: var(--info-bg); border-color: var(--info-border); }
+    .fact-content { display: flex; align-items: flex-start; gap: 8px; flex: 1; min-width: 0; }
+    .fact-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-top: 7px; flex-shrink: 0; }
+    .fact-item.is-new .fact-dot { background: #10b981; }
+    .fact-item.is-inference .fact-dot { background: #f59e0b; }
+    .fact-item.is-updated .fact-dot { background: #0ea5e9; }
+    .fact-text-wrap { flex: 1; min-width: 0; }
+    .fact-text { word-break: break-word; cursor: pointer; display: block; }
+    .fact-subnote { display: block; font-size: 11px; color: var(--text-muted); margin-top: 3px; line-height: 1.35; }
+    .fact-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+    .fact-delete-btn { width: 22px; height: 22px; border-radius: 6px; color: var(--text-muted); font-size: 14px; display: inline-flex; align-items: center; justify-content: center; }
+    .fact-delete-btn:hover { background: var(--danger-bg); color: var(--danger-text); }
+    .empty-col-text { font-size: 12px; color: var(--text-muted); font-style: italic; padding: 6px 2px; }
+    .quick-add-form { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+    .quick-add-input { flex: 1; padding: 8px 11px; border-radius: var(--radius-sm); background: var(--bg-input); border: 1px solid var(--border-color); font-size: 12px; outline: none; }
+    .quick-add-input:focus { border-color: var(--accent); }
+    .quick-add-submit {
+      width: 32px; height: 32px; border-radius: var(--radius-sm); background: var(--bg-elevated);
+      border: 1px solid var(--border-color); color: var(--text-secondary); font-size: 16px; font-weight: 700;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .quick-add-submit:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    /* ТАЙМЛАЙН И ИСТОРИЯ */
+    .history-card { background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); overflow: hidden; }
+    .history-header-row { padding: 13px 18px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+    .history-toggle { font-size: 14px; font-weight: 600; text-align: left; display: inline-flex; align-items: center; gap: 8px; }
+    .history-body { padding: 14px 18px 18px 18px; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 10px; }
+    .history-note { padding: 12px 14px; border-radius: var(--radius-md); background: var(--bg-input); border: 1px solid var(--border-color); font-size: 13px; }
+    .history-note-meta { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
+    .history-note-text { white-space: pre-wrap; color: var(--text-secondary); }
+    .meeting-row {
+      padding: 11px 14px; border-radius: var(--radius-md); background: var(--bg-input); border: 1px solid var(--border-color);
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; font-size: 13px;
+    }
+
+    /* МОДАЛКИ И TOAST */
+    .modal-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; padding: 16px; }
+    .modal-backdrop.open { display: flex; }
+    .modal-box { background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-xl); width: 100%; max-width: 470px; padding: 24px; box-shadow: var(--shadow-lg); max-height: 90vh; overflow-y: auto; }
+    .modal-box.modal-lg { max-width: 780px; max-height: 90vh; padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+    .modal-lg .modal-header { padding: 18px 24px; margin-bottom: 0; border-bottom: 1px solid var(--border-color); background: linear-gradient(90deg, rgba(124, 58, 237, 0.12), transparent); }
+    .modal-title { font-size: 18px; font-weight: 700; }
+    .modal-close { width: 32px; height: 32px; border-radius: 10px; font-size: 18px; color: var(--text-secondary); display: inline-flex; align-items: center; justify-content: center; }
+    .modal-close:hover { background: var(--bg-elevated); color: var(--text-primary); }
+    .form-group { margin-bottom: 14px; }
+    .form-label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+    .form-input { width: 100%; padding: 10px 12px; border-radius: var(--radius-md); background: var(--bg-input); border: 1px solid var(--border-color); font-size: 14px; outline: none; }
+    .form-input:focus { border-color: var(--accent); }
+    .color-swatches { display: flex; gap: 10px; flex-wrap: wrap; }
+    .color-swatch { width: 32px; height: 32px; border-radius: 50%; border: 2px solid transparent; }
+    .color-swatch.selected { transform: scale(1.15); border-color: #fff; box-shadow: 0 0 0 2px var(--accent); }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+    .modal-lg .modal-footer { margin-top: 0; padding: 14px 24px; border-top: 1px solid var(--border-color); background: var(--bg-elevated); justify-content: space-between; flex-wrap: wrap; }
+    .summary-tabs { display: flex; gap: 6px; padding: 12px 24px; background: var(--bg-app); border-bottom: 1px solid var(--border-color); flex-wrap: wrap; }
+    .summary-tab-btn { padding: 7px 14px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+    .summary-tab-btn.active { background: var(--bg-surface); color: var(--text-primary); box-shadow: var(--shadow-sm); }
+    .summary-body { padding: 20px 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; flex: 1; }
+    .summary-section { padding: 15px 16px; border-radius: var(--radius-md); background: var(--bg-input); border: 1px solid var(--border-color); }
+    .summary-section-title { font-size: 13px; font-weight: 700; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+    .summary-section-text { font-size: 13.5px; line-height: 1.6; color: var(--text-secondary); white-space: pre-line; }
+    .account-info-box { padding: 14px; border-radius: var(--radius-md); background: var(--bg-input); border: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+    .account-info-row { display: flex; justify-content: space-between; gap: 12px; color: var(--text-secondary); }
+    .account-info-row strong { color: var(--text-primary); word-break: break-all; text-align: right; }
+    .bind-email-box { margin-top: 14px; padding: 14px; border-radius: var(--radius-md); background: var(--bg-elevated); border: 1px solid var(--border-color); }
+    .engine-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 600; background: var(--accent-soft); color: var(--accent-text); border: 1px solid rgba(124, 58, 237, 0.3); white-space: nowrap; }
+    .engine-pill.is-local { background: var(--bg-elevated); color: var(--text-secondary); border-color: var(--border-color); }
+    .spinner { width: 16px; height: 16px; border: 2px solid rgba(255, 255, 255, 0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }
+    .spinner-lg { width: 36px; height: 36px; border-width: 3px; border-color: rgba(124, 58, 237, 0.25); border-top-color: var(--accent); }
+    .toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 60; display: flex; flex-direction: column; gap: 8px; max-width: 360px; width: calc(100% - 40px); pointer-events: none; }
+    .toast {
+      pointer-events: auto; padding: 12px 15px; border-radius: var(--radius-md); background: var(--bg-elevated);
+      color: var(--text-primary); border: 1px solid var(--border-color); box-shadow: var(--shadow-md);
+      font-size: 13px; font-weight: 500; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    }
+    .toast.success { border-color: var(--success-border); background: var(--bg-surface); }
+    .toast.warning { border-color: var(--warning-border); }
+    .toast.error { border-color: var(--danger-border); }
+    .inline-edit-input { width: 100%; padding: 4px 8px; border-radius: 6px; background: var(--bg-input); border: 1px solid var(--accent); font-size: inherit; font-weight: inherit; outline: none; }
+    .empty-state { text-align: center; padding: 52px 20px; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-xl); }
+
+    @keyframes popIn { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 640px) {
+      .app-header { position: static; }
+      .brand-subtitle, .shortcut-hint { display: none; }
+      .search-input { width: 140px; }
+      .search-input:focus { width: 165px; }
+      .columns-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ЭКРАН ПРОВЕРКИ СЕССИИ -->
+  <div id="authLoadingScreen" class="auth-screen">
+    <div style="text-align: center; display: flex; flex-direction: column; align-items: center; gap: 14px;">
+      <span class="spinner spinner-lg"></span>
+      <div style="font-size: 14px; color: var(--text-secondary);">Проверяем аккаунт и синхронизацию...</div>
+    </div>
+  </div>
+
+  <!-- ЭКРАН ВХОДА, РЕГИСТРАЦИИ И ВОССТАНОВЛЕНИЯ ПАРОЛЯ -->
+  <div id="authScreen" class="auth-screen hidden">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <div class="auth-logo">🧠</div>
+        <h1 class="auth-title">Умный блокнот о людях</h1>
+        <p id="authScreenSubtitle" class="auth-subtitle">
+          Войдите в свой аккаунт, чтобы открыть личный блокнот на ноутбуке или телефоне
+        </p>
+      </div>
+
+      <div id="authSwitcher" class="auth-switcher">
+        <button id="authTabLogin" class="auth-switch-btn active" type="button">Вход в аккаунт</button>
+        <button id="authTabRegister" class="auth-switch-btn" type="button">Создать аккаунт</button>
+      </div>
+
+      <div id="authErrorBox" class="auth-error hidden"></div>
+      <div id="authSuccessBox" class="auth-success hidden"></div>
+
+      <!-- Форма Входа / Регистрации -->
+      <form id="authForm">
+        <div id="authNameGroup" class="form-group hidden">
+          <label class="form-label" for="authDisplayNameInput">Ваше имя (как отображать в шапке)</label>
+          <input id="authDisplayNameInput" class="form-input" type="text" maxlength="40" placeholder="Например: Арыс" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="authLoginInput">Логин или Email *</label>
+          <input id="authLoginInput" class="form-input" type="text" required autocomplete="username" placeholder="Например: arys или arys@mail.com" />
+          <div class="auth-hint">Можно придумать короткий логин либо указать Email (нужен для восстановления пароля).</div>
+        </div>
+
+        <div class="form-group">
+          <div class="password-label-row">
+            <label class="form-label" for="authPasswordInput" style="margin-bottom: 0;">Пароль *</label>
+            <button id="forgotPasswordOpenBtn" class="link-btn" type="button">Забыли пароль?</button>
+          </div>
+          <div class="password-input-wrap">
+            <input id="authPasswordInput" class="form-input" type="password" required minlength="6" autocomplete="current-password" placeholder="Минимум 6 символов" />
+            <button id="togglePasswordBtn" class="password-toggle-btn" type="button" aria-label="Показать пароль" aria-pressed="false" title="Показать пароль">
+              <svg id="eyeIconShow" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+              <svg id="eyeIconHide" class="hidden" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <button id="authSubmitBtn" class="btn btn-primary" type="submit" style="width: 100%; margin-top: 4px;">
+          Войти в мой блокнот
+        </button>
+      </form>
+
+      <!-- Форма восстановления пароля -->
+      <form id="forgotForm" class="hidden">
+        <div class="form-group">
+          <label class="form-label" for="resetEmailInput">Привязанный Email *</label>
+          <input id="resetEmailInput" class="form-input" type="email" required placeholder="name@example.com" />
+          <div class="auth-hint">
+            Если вы регистрировались по короткому логину без почты, предварительно привяжите реальный Email в настройках аккаунта.
+          </div>
+        </div>
+        <button id="forgotSubmitBtn" class="btn btn-primary" type="submit" style="width: 100%;">
+          🔑 Отправить ссылку для сброса
+        </button>
+        <button id="forgotBackBtn" class="btn btn-secondary" type="button" style="width: 100%; margin-top: 8px;">
+          ← Вернуться ко входу
+        </button>
+      </form>
+
+      <div class="auth-divider">или</div>
+
+      <button id="continueGuestBtn" class="btn btn-secondary" type="button" style="width: 100%; font-size: 12.5px;">
+        Продолжить локально (без облака)
+      </button>
+    </div>
+  </div>
+
+  <!-- ОСНОВНОЕ ПРИЛОЖЕНИЕ -->
+  <div id="appShell" class="hidden" style="display: flex; flex-direction: column; min-height: 100vh;">
+    <header class="app-header">
+      <div class="container">
+        <div class="header-top">
+          <div class="brand">
+            <div class="brand-logo" aria-hidden="true">🧠</div>
+            <div>
+              <div class="brand-title">
+                <span>Умный блокнот о людях</span>
+                <span id="cloudStatusBadge" class="cloud-pill" title="Статус синхронизации с облаком Firebase">
+                  <span class="cloud-dot"></span>
+                  <span id="cloudStatusText">Подключение...</span>
+                </span>
+                <button id="manualSyncHeaderBtn" class="sync-now-btn hidden" type="button" title="Принудительно синхронизировать с облаком">
+                  🔄 Синхронизировать сейчас
+                </button>
+              </div>
+              <div class="brand-subtitle">Личный облачный блокнот без дублей, напоминания о датах и хронология встреч</div>
+            </div>
+          </div>
+
+          <div class="header-tools">
+            <button id="accountBadgeBtn" class="account-pill" type="button" title="Управление аккаунтом и привязка почты">
+              <span>👤</span>
+              <span id="accountBadgeName">Аккаунт</span>
+            </button>
+
+            <span id="engineStatusBadge" class="engine-pill" title="Текущий движок анализа">⚡ Gemini AI</span>
+
+            <div class="search-box">
+              <span class="search-icon">🔍</span>
+              <input
+                id="searchInput"
+                class="search-input"
+                type="search"
+                name="notebook_filter_query"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+                spellcheck="false"
+                readonly
+                onfocus="this.removeAttribute('readonly')"
+                placeholder="Поиск по людям и фактам..."
+              />
+              <button id="searchClearBtn" class="search-clear" type="button" title="Очистить поиск">&times;</button>
+            </div>
+
+            <button id="exportJsonBtn" class="tool-btn" type="button" title="Скачать резервную копию (JSON)">⬇️ <span>Экспорт</span></button>
+            <button id="importJsonBtn" class="tool-btn" type="button" title="Загрузить резервную копию (JSON)">⬆️ <span>Импорт</span></button>
+            <input id="importFileInput" type="file" accept=".json,application/json" hidden />
+            <button id="apiSettingsBtn" class="tool-btn" type="button" title="Настройки Gemini API">⚙️ <span>Настройки ИИ</span></button>
+            <button id="themeToggleBtn" class="tool-btn" type="button" title="Переключить тему"><span id="themeIcon">☀️</span></button>
+          </div>
+        </div>
+
+        <!-- Фильтр по группам -->
+        <div id="groupsBar" class="groups-bar hidden"></div>
+
+        <!-- Панель вкладок людей -->
+        <nav class="tabs-bar" aria-label="Вкладки людей">
+          <div id="tabsList" class="tabs-list"></div>
+          <button id="openAddPersonBtn" class="add-person-btn" type="button">
+            <span>+ Добавить человека</span>
+          </button>
+        </nav>
+      </div>
+    </header>
+
+    <main id="mainArea" class="container main-area"></main>
+  </div>
+
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- МОДАЛЬНОЕ ОКНО: АККАУНТ, ПРИВЯЗКА ПОЧТЫ И СИНХРОНИЗАЦИЯ -->
+  <div id="accountModal" class="modal-backdrop" role="dialog" aria-modal="true">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2 class="modal-title">👤 Личный аккаунт и почта</h2>
+        <button class="modal-close" type="button" data-close-modal="accountModal">&times;</button>
+      </div>
+      <div id="accountModalContent"></div>
+      <div class="modal-footer" style="justify-content: space-between;">
+        <button id="logoutBtn" class="btn btn-primary" type="button" style="background: linear-gradient(135deg, #e11d48, #be123c);">
+          🚪 Выйти / Сменить аккаунт
+        </button>
+        <button class="btn btn-secondary" type="button" data-close-modal="accountModal">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- МОДАЛЬНОЕ ОКНО: ДОБАВИТЬ ЧЕЛОВЕКА -->
+  <div id="addPersonModal" class="modal-backdrop" role="dialog" aria-modal="true">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2 class="modal-title">Новый человек в блокноте</h2>
+        <button class="modal-close" type="button" data-close-modal="addPersonModal">&times;</button>
+      </div>
+      <form id="addPersonForm">
+        <div class="form-group">
+          <label class="form-label" for="newPersonNameInput">Имя или прозвище *</label>
+          <input id="newPersonNameInput" class="form-input" type="text" required maxlength="40" placeholder="Например: Максим, Катя (дизайнер)..." />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="newPersonNoteInput">Краткая пометка (кто это)</label>
+          <input id="newPersonNoteInput" class="form-input" type="text" maxlength="80" placeholder="Например: Коллега из отдела разработки" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="newPersonGroupSelect">Группа / тег контакта</label>
+          <select id="newPersonGroupSelect" class="form-input">
+            <option value="">Без группы</option>
+            <option value="Семья">Семья</option>
+            <option value="Друзья" selected>Друзья</option>
+            <option value="Работа">Работа</option>
+            <option value="Университет">Университет</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <span class="form-label">Цвет значка вкладки</span>
+          <div id="colorSwatches" class="color-swatches"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" type="button" data-close-modal="addPersonModal">Отмена</button>
+          <button class="btn btn-primary" type="submit">Создать вкладку</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- МОДАЛЬНОЕ ОКНО: ДОБАВИТЬ КОЛОНКУ -->
+  <div id="addColumnModal" class="modal-backdrop" role="dialog" aria-modal="true">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2 class="modal-title">Новая колонка характеристик</h2>
+        <button class="modal-close" type="button" data-close-modal="addColumnModal">&times;</button>
+      </div>
+      <form id="addColumnForm">
+        <div style="display: flex; gap: 10px;">
+          <div class="form-group" style="width: 76px;">
+            <label class="form-label" for="newColumnIconInput">Иконка</label>
+            <input id="newColumnIconInput" class="form-input" type="text" maxlength="4" value="📌" style="text-align: center; font-size: 18px;" />
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label class="form-label" for="newColumnTitleInput">Название колонки *</label>
+            <input id="newColumnTitleInput" class="form-input" type="text" required maxlength="40" placeholder="Например: Идеи подарков, Семья..." />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" type="button" data-close-modal="addColumnModal">Отмена</button>
+          <button class="btn btn-primary" type="submit">Добавить колонку</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- МОДАЛЬНОЕ ОКНО: ЗАПИСАТЬ ВСТРЕЧУ / ЗВОНОК -->
+  <div id="addMeetingModal" class="modal-backdrop" role="dialog" aria-modal="true">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2 id="addMeetingTitle" class="modal-title">Записать встречу / звонок</h2>
+        <button class="modal-close" type="button" data-close-modal="addMeetingModal">&times;</button>
+      </div>
+      <form id="addMeetingForm">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div class="form-group">
+            <label class="form-label" for="meetingDateInput">Дата *</label>
+            <input id="meetingDateInput" class="form-input" type="date" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="meetingTypeSelect">Формат</label>
+            <select id="meetingTypeSelect" class="form-input">
+              <option value="meeting">☕ Встреча</option>
+              <option value="call">📞 Звонок</option>
+              <option value="message">💬 Переписка</option>
+              <option value="other">📌 Событие</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="meetingSummaryInput">Краткий итог общения *</label>
+          <textarea id="meetingSummaryInput" class="form-input" rows="3" required placeholder="Например: Пили кофе, обсуждали поездку в Японию..."></textarea>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" type="button" data-close-modal="addMeetingModal">Отмена</button>
+          <button class="btn btn-primary" type="submit">Сохранить в таймлайн</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- МОДАЛЬНОЕ ОКНО: НАСТРОЙКИ ИИ -->
+  <div id="apiSettingsModal" class="modal-backdrop" role="dialog" aria-modal="true">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2 class="modal-title">⚙️ Настройки ИИ-анализатора</h2>
+        <button class="modal-close" type="button" data-close-modal="apiSettingsModal">&times;</button>
+      </div>
+      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.55;">
+        Блокнот оснащён <strong>двойным движком</strong>: он работает через Google Gemini API (когда указан ключ), а без ключа, при таймауте или офлайн автоматически переключается на встроенный семантический парсер с уведомлением.
+      </p>
+      <div class="form-group">
+        <label class="form-label" for="apiKeyInput">Пользовательский Gemini API Key (необязательно)</label>
+        <input id="apiKeyInput" class="form-input" type="password" placeholder="AIzaSy..." style="font-family: monospace;" />
+      </div>
+      <div class="modal-footer">
+        <button id="clearApiKeyBtn" class="btn btn-secondary" type="button">Очистить ключ</button>
+        <button id="saveApiKeyBtn" class="btn btn-primary" type="button">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- МОДАЛЬНОЕ ОКНО: ПОДТВЕРЖДЕНИЕ -->
+  <div id="confirmModal" class="modal-backdrop" role="dialog" aria-modal="true">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2 id="confirmTitle" class="modal-title">Подтвердите действие</h2>
+        <button class="modal-close" type="button" data-close-modal="confirmModal">&times;</button>
+      </div>
+      <p id="confirmMessage" style="font-size: 14px; color: var(--text-secondary); line-height: 1.5;"></p>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" type="button" data-close-modal="confirmModal">Отмена</button>
+        <button id="confirmOkBtn" class="btn btn-primary" type="button" style="background: linear-gradient(135deg, #e11d48, #be123c);">Удалить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- МОДАЛЬНОЕ ОКНО: ИИ-СВОДКА -->
+  <div id="summaryModal" class="modal-backdrop" role="dialog" aria-modal="true">
+    <div class="modal-box modal-lg">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title">📋 ИИ-Досье и аналитика</h2>
+          <p id="summaryEngineSubtitle" style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">
+            Глубокий психологический портрет, точки контакта и сценарии встреч
+          </p>
+        </div>
+        <button class="modal-close" type="button" data-close-modal="summaryModal">&times;</button>
+      </div>
+
+      <div class="summary-tabs">
+        <button id="summaryTabSingle" class="summary-tab-btn active" type="button">По выбранному человеку</button>
+        <button id="summaryTabAll" class="summary-tab-btn" type="button">Общая сводка по всем людям</button>
+      </div>
+
+      <div id="summaryBody" class="summary-body"></div>
+
+      <div class="modal-footer">
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+          <button id="copySummaryBtn" class="btn btn-primary" type="button">📋 Скопировать всё</button>
+          <button id="downloadSummaryTxtBtn" class="btn btn-secondary" type="button">💾 Скачать .txt</button>
+          <button id="refreshSummaryBtn" class="btn btn-secondary" type="button">🔄 Пересобрать ИИ</button>
+        </div>
+        <button class="btn btn-secondary" type="button" data-close-modal="summaryModal">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+    import { getDatabase, ref, set, remove, onValue } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
+    import {
+      initializeAuth,
+      indexedDBLocalPersistence,
+      browserLocalPersistence,
+      inMemoryPersistence,
+      createUserWithEmailAndPassword,
+      signInWithEmailAndPassword,
+      signOut,
+      onAuthStateChanged,
+      updateProfile,
+      sendPasswordResetEmail,
+      EmailAuthProvider,
+      reauthenticateWithCredential,
+      verifyBeforeUpdateEmail,
+      sendEmailVerification
+    } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCZzb83vFUDEruoR4KMFBG-7CVnyBwkRDc",
+      authDomain: "friends-37e97.firebaseapp.com",
+      databaseURL: "https://friends-37e97-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "friends-37e97",
+      storageBucket: "friends-37e97.firebasestorage.app",
+      messagingSenderId: "725885022606",
+      appId: "1:725885022606:web:95c1c23509a935b6f4f4df",
+      measurementId: "G-LJ13FV5HZN"
+    };
+
+    const safeStorage = (function () {
+      const memoryStore = new Map();
+      let persistent = false;
+      try {
+        const probe = "__smart_notebook_probe__";
+        window.localStorage.setItem(probe, "1");
+        window.localStorage.removeItem(probe);
+        persistent = true;
+      } catch { persistent = false; }
+
+      return {
+        getItem(key) {
+          if (persistent) {
+            try { return window.localStorage.getItem(key); } catch { return memoryStore.get(key) ?? null; }
+          }
+          return memoryStore.get(key) ?? null;
+        },
+        setItem(key, value) {
+          const strVal = String(value);
+          memoryStore.set(key, strVal);
+          if (persistent) { try { window.localStorage.setItem(key, strVal); } catch {} }
+        },
+        removeItem(key) {
+          memoryStore.delete(key);
+          if (persistent) { try { window.localStorage.removeItem(key); } catch {} }
+        }
+      };
+    })();
+
+    const STORAGE_DATA_PREFIX = "smart_people_notebook_data_v6_";
+    const STORAGE_TAB_PREFIX = "smart_people_notebook_tab_v6_";
+    const STORAGE_PENDING_PREFIX = "smart_people_notebook_pending_v1_";
+    const STORAGE_API_KEY = "smart_people_notebook_gemini_key";
+    const STORAGE_THEME_KEY = "smart_people_notebook_theme";
+
+    const DEFAULT_GROUPS = ["Семья", "Друзья", "Работа", "Университет"];
+    const AVATAR_COLORS = [
+      { id: "violet", bg: "linear-gradient(135deg, #7c3aed, #4f46e5)" },
+      { id: "emerald", bg: "linear-gradient(135deg, #10b981, #0d9488)" },
+      { id: "amber", bg: "linear-gradient(135deg, #f59e0b, #ea580c)" },
+      { id: "rose", bg: "linear-gradient(135deg, #f43f5e, #db2777)" },
+      { id: "sky", bg: "linear-gradient(135deg, #0ea5e9, #2563eb)" },
+      { id: "fuchsia", bg: "linear-gradient(135deg, #c026d3, #7e22ce)" }
+    ];
+
+    const DEMO_SAMPLE_TEXT =
+      "Сегодня долго болтали с Алиной! Оказывается, она недавно полностью отказалась от кофе и теперь пьёт только японскую матчу на овсяном молоке. " +
+      "Выяснил, что у неё сильная аллергия на арахис и мёд. Дома у неё живёт рыжий кот по кличке Персик. " +
+      "Она всегда приходит на встречи за 10 минут заранее и строит планы на месяц вперёд. " +
+      "Ещё Алина призналась, что давно мечтает научиться играть на укулеле, но пока не решалась купить инструмент, а осенью хочет съездить в Японию и увидеть Киото.";
+
+    let db = null;
+    let auth = null;
+    let unsubscribeCloud = null;
+
+    const state = {
+      currentUser: null,
+      isGuestMode: false,
+      authMode: "login",
+      authSubmitting: false,
+      activePersonId: null,
+      people: [],
+      searchQuery: "",
+      selectedGroup: "Все",
+      draftText: "",
+      isAnalyzing: false,
+      lastReport: null,
+      timelineOpen: true,
+      historyOpen: false,
+      selectedColorId: "violet",
+      confirmAction: null,
+      summaryMode: "single",
+      isSummarizing: false,
+      summaryData: null,
+      activeEngine: "gemini",
+      advisorQuery: "",
+      advisorAnswer: "",
+      isAskingAdvisor: false,
+      pendingQueue: { upsertIds: [], deleteIds: [] },
+      isSyncing: false
+    };
+
+    function uid(prefix) {
+      return prefix + "_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7);
+    }
+
+    function escapeHtml(value) {
+      if (value === null || value === undefined) return "";
+      return String(value)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+
+    function getInitials(name) {
+      const clean = String(name || "?").trim();
+      if (!clean) return "?";
+      const parts = clean.split(/\s+/);
+      return parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : clean.slice(0, 2).toUpperCase();
+    }
+
+    function getAvatarGradient(colorId) {
+      const found = AVATAR_COLORS.find(c => c.id === colorId);
+      return found ? found.bg : AVATAR_COLORS[0].bg;
+    }
+
+    function getTodayInputDate() {
+      const now = new Date();
+      return now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
+    }
+
+    function formatDateTime(isoStr) {
+      if (!isoStr) return "только что";
+      try {
+        const d = new Date(isoStr);
+        if (Number.isNaN(d.getTime())) return "недавно";
+        return d.toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+      } catch { return "недавно"; }
+    }
+
+    function formatShortDate(dateStr) {
+      if (!dateStr) return "";
+      try {
+        const d = new Date(dateStr.length === 10 ? dateStr + "T12:00:00" : dateStr);
+        if (Number.isNaN(d.getTime())) return dateStr;
+        return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+      } catch { return dateStr; }
+    }
+
+    function toArray(val) {
+      if (Array.isArray(val)) return val.filter(Boolean);
+      if (val && typeof val === "object") return Object.values(val).filter(Boolean);
+      return [];
+    }
+
+    function computeLatestContactIso(person) {
+      const ts = [];
+      (person.meetings || []).forEach(m => {
+        if (m.date) { const ms = new Date(m.date + "T12:00:00").getTime(); if (!Number.isNaN(ms)) ts.push(ms); }
+        if (m.createdAt) { const ms = new Date(m.createdAt).getTime(); if (!Number.isNaN(ms)) ts.push(ms); }
+      });
+      (person.rawNotes || []).forEach(n => {
+        if (n.createdAt) { const ms = new Date(n.createdAt).getTime(); if (!Number.isNaN(ms)) ts.push(ms); }
+      });
+      if (person.lastContactAt) { const ms = new Date(person.lastContactAt).getTime(); if (!Number.isNaN(ms)) ts.push(ms); }
+      if (ts.length === 0 && person.updatedAt) { const ms = new Date(person.updatedAt).getTime(); if (!Number.isNaN(ms)) ts.push(ms); }
+      return ts.length ? new Date(Math.max(...ts)).toISOString() : new Date().toISOString();
+    }
+
+    function normalizePeople(rawList) {
+      return toArray(rawList).map(p => {
+        const meetings = toArray(p.meetings).map(m => ({
+          id: m.id || uid("meet"),
+          date: m.date || getTodayInputDate(),
+          type: (m.type === "call" || m.type === "message" || m.type === "other") ? m.type : "meeting",
+          summary: m.summary || "",
+          createdAt: m.createdAt || new Date().toISOString()
+        })).sort((a, b) => b.date.localeCompare(a.date));
+
+        const rawNotes = toArray(p.rawNotes).map(n => ({
+          id: n.id || uid("note"),
+          createdAt: n.createdAt || new Date().toISOString(),
+          text: n.text || ""
+        }));
+
+        const updatedAt = p.updatedAt || new Date().toISOString();
+        return {
+          id: p.id || uid("person"),
+          name: p.name || "Без имени",
+          subtitle: p.subtitle || "",
+          colorId: p.colorId || "violet",
+          isPinned: Boolean(p.isPinned),
+          group: typeof p.group === "string" ? p.group : "",
+          contactIntervalDays: typeof p.contactIntervalDays === "number" ? p.contactIntervalDays : 30,
+          updatedAt,
+          lastContactAt: computeLatestContactIso({ meetings, rawNotes, lastContactAt: p.lastContactAt, updatedAt }),
+          columns: toArray(p.columns).map(c => ({
+            id: c.id || uid("col"),
+            title: c.title || "Без названия",
+            icon: c.icon || "📌",
+            isNew: Boolean(c.isNew),
+            facts: toArray(c.facts).map(f => ({
+              id: f.id || uid("fact"),
+              text: f.text || "",
+              isNew: Boolean(f.isNew),
+              tag: f.tag || "fact",
+              reason: f.reason || "",
+              prevText: f.prevText || ""
+            }))
+          })),
+          rawNotes,
+          meetings
+        };
+      });
+    }
+
+    function getActivePerson() {
+      return state.people.find(p => p.id === state.activePersonId) || null;
+    }
+
+    function getCurrentStorageScope() {
+      return state.currentUser && state.currentUser.uid ? state.currentUser.uid : "guest";
+    }
+
+    function readPendingQueue(scopeId) {
+      try {
+        const raw = safeStorage.getItem(STORAGE_PENDING_PREFIX + scopeId);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          return {
+            upsertIds: Array.isArray(parsed.upsertIds) ? parsed.upsertIds : [],
+            deleteIds: Array.isArray(parsed.deleteIds) ? parsed.deleteIds : []
+          };
+        }
+      } catch {}
+      return { upsertIds: [], deleteIds: [] };
+    }
+
+    function writePendingQueue(scopeId, q) {
+      safeStorage.setItem(STORAGE_PENDING_PREFIX + scopeId, JSON.stringify(q));
+    }
+
+    function updateCloudBadge(status, label) {
+      const badge = document.getElementById("cloudStatusBadge");
+      const text = document.getElementById("cloudStatusText");
+      const syncBtn = document.getElementById("manualSyncHeaderBtn");
+      const pendingCount = state.pendingQueue.upsertIds.length + state.pendingQueue.deleteIds.length;
+
+      if (badge && text) {
+        text.textContent = pendingCount > 0 ? `Не сохранено (${pendingCount})` : label;
+        badge.classList.remove("is-online", "is-error");
+        if (pendingCount === 0 && status === "online") badge.classList.add("is-online");
+        else if (status === "error") badge.classList.add("is-error");
+      }
+
+      if (syncBtn) {
+        if (state.currentUser) {
+          syncBtn.classList.remove("hidden");
+          syncBtn.classList.toggle("is-pending", pendingCount > 0);
+          syncBtn.disabled = state.isSyncing;
+          syncBtn.textContent = state.isSyncing ? "🔄 Синхронизация..." : "🔄 Синхронизировать сейчас";
+        } else {
+          syncBtn.classList.add("hidden");
+        }
+      }
+    }
+
+    /* ========================================================================
+       УМНЫЕ НАПОМИНАНИЯ О ДАТАХ И ТРЕКЕР ОБЩЕНИЯ
+       ======================================================================== */
+    const MONTHS_GENITIVE = {
+      января: 1, январь: 1, янв: 1, февраля: 2, февраль: 2, фев: 2,
+      марта: 3, март: 3, мар: 3, апреля: 4, апрель: 4, апр: 4,
+      мая: 5, май: 5, июня: 6, июнь: 6, июн: 6, июля: 7, июль: 7, июл: 7,
+      августа: 8, август: 8, авг: 8, сентября: 9, сентябрь: 9, сен: 9, сент: 9,
+      октября: 10, октябрь: 10, окт: 10, ноября: 11, ноябрь: 11, ноя: 11,
+      декабря: 12, декабрь: 12, дек: 12
+    };
+    const MONTH_LABELS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+
+    function isValidDayMonth(day, month) {
+      if (month < 1 || month > 12 || day < 1) return false;
+      const maxDays = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+      return day <= maxDays[month - 1];
+    }
+
+    function parseRussianDatesFromText(text) {
+      const results = [];
+      const seen = new Set();
+      const source = String(text || "").toLowerCase();
+      const namedRx = /(?:^|[^\d])(\d{1,2})\s+(января|январь|янв|февраля|февраль|фев|марта|март|мар|апреля|апрель|апр|мая|май|июня|июнь|июн|июля|июль|июл|августа|август|авг|сентября|сентябрь|сен|сент|октября|октябрь|окт|ноября|ноябрь|ноя|декабря|декабрь|дек)(?![а-яё])/gi;
+      let m;
+      while ((m = namedRx.exec(source)) !== null) {
+        const day = Number(m[1]);
+        const month = MONTHS_GENITIVE[m[2].toLowerCase()];
+        if (month && isValidDayMonth(day, month) && !seen.has(day + "." + month)) {
+          seen.add(day + "." + month);
+          results.push({ day, month });
+        }
+      }
+      const numericRx = /(?:^|[^\d])(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?(?=$|[^\d])/g;
+      while ((m = numericRx.exec(source)) !== null) {
+        const day = Number(m[1]);
+        const month = Number(m[2]);
+        if (isValidDayMonth(day, month) && !seen.has(day + "." + month)) {
+          seen.add(day + "." + month);
+          results.push({ day, month });
+        }
+      }
+      return results;
+    }
+
+    function computeDaysUntilNextOccurrence(day, month) {
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const buildTarget = (year) => {
+        if (month === 2 && day === 29) {
+          const isLeap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+          return new Date(year, 1, isLeap ? 29 : 28);
+        }
+        return new Date(year, month - 1, day);
+      };
+      let target = buildTarget(todayStart.getFullYear());
+      if (target.getTime() < todayStart.getTime()) target = buildTarget(todayStart.getFullYear() + 1);
+      return Math.round((target.getTime() - todayStart.getTime()) / 86400000);
+    }
+
+    function getUpcomingReminders(people, windowDays = 30) {
+      const reminders = [];
+      people.forEach(person => {
+        const seen = new Set();
+        person.columns.forEach(col => {
+          const lowCol = col.title.toLowerCase();
+          const isDateCol = lowCol.includes("дат") || lowCol.includes("рожден") || lowCol.includes("празд") || lowCol.includes("годовщин");
+          col.facts.forEach(fact => {
+            const hasKw = isDateCol || /(?:день\s+рожден|\bдр\b|годовщин|юбиле|праздник|свадьб|именин)/i.test(fact.text);
+            if (!hasKw) return;
+            parseRussianDatesFromText(fact.text).forEach(match => {
+              const daysUntil = computeDaysUntilNextOccurrence(match.day, match.month);
+              if (daysUntil <= windowDays) {
+                const key = match.day + "." + match.month + ":" + fact.text.toLowerCase();
+                if (seen.has(key)) return;
+                seen.add(key);
+                reminders.push({
+                  id: person.id + "_" + match.day + "_" + match.month + "_" + fact.id,
+                  personId: person.id,
+                  personName: person.name,
+                  factText: fact.text,
+                  daysUntil,
+                  isBirthday: /(?:день\s+рожден|\bдр\b|именин|рожден|д\.р\.)/i.test(col.title + " " + fact.text),
+                  formattedDate: match.day + " " + MONTH_LABELS[match.month - 1]
+                });
+              }
+            });
+          });
+        });
+      });
+      reminders.sort((a, b) => a.daysUntil - b.daysUntil);
+      return reminders;
+    }
+
+    function getDaysSinceLastContact(person) {
+      const iso = person.lastContactAt || person.updatedAt;
+      if (!iso) return 0;
+      const last = new Date(iso);
+      if (Number.isNaN(last.getTime())) return 0;
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const lastStart = new Date(last.getFullYear(), last.getMonth(), last.getDate());
+      return Math.max(0, Math.floor((todayStart.getTime() - lastStart.getTime()) / 86400000));
+    }
+
+    function formatDaysRussian(days) {
+      const abs = Math.abs(Math.floor(days));
+      const mod100 = abs % 100;
+      const mod10 = abs % 10;
+      if (mod100 >= 11 && mod100 <= 14) return abs + " дней";
+      if (mod10 === 1) return abs + " день";
+      if (mod10 >= 2 && mod10 <= 4) return abs + " дня";
+      return abs + " дней";
+    }
+
+    /* ========================================================================
+       АВТОРИЗАЦИЯ, ПРИВЯЗКА ПОЧТЫ И ВОССТАНОВЛЕНИЕ ПАРОЛЯ
+       ======================================================================== */
+    function transliterateLogin(str) {
+      const map = {
+        а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "yo", ж: "zh", з: "z", и: "i",
+        й: "y", к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r", с: "s", т: "t",
+        у: "u", ф: "f", х: "kh", ц: "ts", ч: "ch", ш: "sh", щ: "shch", ъ: "", ы: "y",
+        ь: "", э: "e", ю: "yu", я: "ya", ә: "a", ғ: "g", қ: "q", ң: "n", ө: "o", ұ: "u", ү: "u", һ: "h", і: "i"
+      };
+      return String(str || "").toLowerCase().split("").map(ch => map[ch] !== undefined ? map[ch] : ch).join("");
+    }
+
+    function normalizeLoginToEmail(rawLogin) {
+      const clean = String(rawLogin || "").trim().toLowerCase();
+      if (!clean) return "";
+      if (clean.includes("@")) return clean;
+      const latin = transliterateLogin(clean).replace(/[^a-z0-9._-]/g, "_");
+      return (latin || "user") + "@notebook.app";
+    }
+
+    function isSyntheticLoginEmail(email) {
+      return !email || String(email).toLowerCase().endsWith("@notebook.app");
+    }
+
+    function getUserDisplayLabel(user) {
+      if (!user) return "Гость (локально)";
+      if (user.displayName && user.displayName.trim()) return user.displayName.trim();
+      const email = user.email || "";
+      if (email.endsWith("@notebook.app")) return email.replace("@notebook.app", "");
+      return email.split("@")[0] || "Пользователь";
+    }
+
+    function getHumanFirebaseAuthError(err) {
+      const code = (err && err.code) || "";
+      const suffix = code ? " [" + code + "]" : "";
+      if (code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found") {
+        return "Неверный логин/Email или пароль. Проверьте данные и попробуйте снова." + suffix;
+      }
+      if (code === "auth/email-already-in-use") return "Этот логин или Email уже занят." + suffix;
+      if (code === "auth/weak-password") return "Пароль слишком короткий — минимум 6 символов." + suffix;
+      if (code === "auth/invalid-email") return "Некорректный формат логина или Email." + suffix;
+      if (code === "auth/requires-recent-login") return "Для смены почты требуется ввести текущий пароль." + suffix;
+      if (code === "auth/too-many-requests") return "Слишком много попыток. Подождите пару минут." + suffix;
+      if (code === "auth/network-request-failed") return "Нет соединения с сервером Firebase." + suffix;
+      return "Ошибка авторизации: " + (err && err.message ? err.message : "неизвестная ошибка") + suffix;
+    }
+
+    function setPasswordVisibility(visible) {
+      const passInput = document.getElementById("authPasswordInput");
+      const toggleBtn = document.getElementById("togglePasswordBtn");
+      const iconShow = document.getElementById("eyeIconShow");
+      const iconHide = document.getElementById("eyeIconHide");
+      if (!passInput || !toggleBtn) return;
+      passInput.type = visible ? "text" : "password";
+      iconShow.classList.toggle("hidden", visible);
+      iconHide.classList.toggle("hidden", !visible);
+      toggleBtn.setAttribute("aria-pressed", visible ? "true" : "false");
+    }
+
+    function setAuthMode(mode) {
+      state.authMode = mode;
+      const switcher = document.getElementById("authSwitcher");
+      const authForm = document.getElementById("authForm");
+      const forgotForm = document.getElementById("forgotForm");
+      const loginTab = document.getElementById("authTabLogin");
+      const regTab = document.getElementById("authTabRegister");
+      const nameGroup = document.getElementById("authNameGroup");
+      const submitBtn = document.getElementById("authSubmitBtn");
+      const passInput = document.getElementById("authPasswordInput");
+      const subtitle = document.getElementById("authScreenSubtitle");
+      const errBox = document.getElementById("authErrorBox");
+      const okBox = document.getElementById("authSuccessBox");
+
+      errBox.classList.add("hidden");
+      okBox.classList.add("hidden");
+      setPasswordVisibility(false);
+
+      if (mode === "forgot") {
+        switcher.classList.add("hidden");
+        authForm.classList.add("hidden");
+        forgotForm.classList.remove("hidden");
+        subtitle.textContent = "Восстановление доступа к вашему облачному блокноту";
+        const curLogin = document.getElementById("authLoginInput").value.trim();
+        if (curLogin.includes("@")) document.getElementById("resetEmailInput").value = curLogin;
+        return;
+      }
+
+      switcher.classList.remove("hidden");
+      forgotForm.classList.add("hidden");
+      authForm.classList.remove("hidden");
+      subtitle.textContent = "Войдите в свой аккаунт, чтобы открыть личный блокнот на ноутбуке или телефоне";
+
+      if (mode === "register") {
+        loginTab.classList.remove("active");
+        regTab.classList.add("active");
+        nameGroup.classList.remove("hidden");
+        submitBtn.textContent = "Создать мой аккаунт";
+        passInput.setAttribute("autocomplete", "new-password");
+      } else {
+        regTab.classList.remove("active");
+        loginTab.classList.add("active");
+        nameGroup.classList.add("hidden");
+        submitBtn.textContent = "Войти в мой блокнот";
+        passInput.setAttribute("autocomplete", "current-password");
+      }
+    }
+
+    function showAuthScreen() {
+      document.getElementById("authLoadingScreen").classList.add("hidden");
+      document.getElementById("appShell").classList.add("hidden");
+      document.getElementById("authScreen").classList.remove("hidden");
+    }
+
+    function clearSearchFilter() {
+      state.searchQuery = "";
+      const sInput = document.getElementById("searchInput");
+      const sClear = document.getElementById("searchClearBtn");
+      if (sInput) sInput.value = "";
+      if (sClear) sClear.classList.remove("visible");
+    }
+
+    function showAppShell() {
+      document.getElementById("authLoadingScreen").classList.add("hidden");
+      document.getElementById("authScreen").classList.add("hidden");
+      document.getElementById("appShell").classList.remove("hidden");
+      clearSearchFilter();
+      document.getElementById("accountBadgeName").textContent = state.currentUser
+        ? getUserDisplayLabel(state.currentUser)
+        : "Гость (локально)";
+    }
+
+    /* ========================================================================
+       ТОЧЕЧНАЯ СИНХРОНИЗАЦИЯ ПО ID ЧЕЛОВЕКА И ОЧЕРЕДЬ ОФЛАЙН-ПРАВОК
+       ======================================================================== */
+    function persistLocalSnapshot() {
+      const scopeId = getCurrentStorageScope();
+      if (state.activePersonId) safeStorage.setItem(STORAGE_TAB_PREFIX + scopeId, state.activePersonId);
+      safeStorage.setItem(
+        STORAGE_DATA_PREFIX + scopeId,
+        JSON.stringify({ activePersonId: state.activePersonId, people: state.people })
+      );
+    }
+
+    async function savePersonToCloud(person) {
+      persistLocalSnapshot();
+      if (!db || !state.currentUser) return;
+      const uidStr = state.currentUser.uid;
+      updateCloudBadge("warning", "Синхронизация...");
+      try {
+        const cleanPerson = JSON.parse(JSON.stringify(person));
+        await set(ref(db, "users/" + uidStr + "/people/" + person.id), cleanPerson);
+        state.pendingQueue.upsertIds = state.pendingQueue.upsertIds.filter(id => id !== person.id);
+        state.pendingQueue.deleteIds = state.pendingQueue.deleteIds.filter(id => id !== person.id);
+        writePendingQueue(uidStr, state.pendingQueue);
+        updateCloudBadge("online", "Синхронизировано");
+      } catch (err) {
+        if (!state.pendingQueue.upsertIds.includes(person.id)) state.pendingQueue.upsertIds.push(person.id);
+        state.pendingQueue.deleteIds = state.pendingQueue.deleteIds.filter(id => id !== person.id);
+        writePendingQueue(uidStr, state.pendingQueue);
+        updateCloudBadge("error", "Ошибка облака");
+        showToast("Сохранено локально. Нажмите «Синхронизировать сейчас», когда появится связь.", "warning");
+      }
+    }
+
+    async function deletePersonFromCloud(personId) {
+      persistLocalSnapshot();
+      if (!db || !state.currentUser) return;
+      const uidStr = state.currentUser.uid;
+      updateCloudBadge("warning", "Синхронизация...");
+      try {
+        await remove(ref(db, "users/" + uidStr + "/people/" + personId));
+        state.pendingQueue.upsertIds = state.pendingQueue.upsertIds.filter(id => id !== personId);
+        state.pendingQueue.deleteIds = state.pendingQueue.deleteIds.filter(id => id !== personId);
+        writePendingQueue(uidStr, state.pendingQueue);
+        updateCloudBadge("online", "Синхронизировано");
+      } catch (err) {
+        state.pendingQueue.upsertIds = state.pendingQueue.upsertIds.filter(id => id !== personId);
+        if (!state.pendingQueue.deleteIds.includes(personId)) state.pendingQueue.deleteIds.push(personId);
+        writePendingQueue(uidStr, state.pendingQueue);
+        updateCloudBadge("error", "Ошибка облака");
+        showToast("Удаление сохранено локально и ждёт синхронизации.", "warning");
+      }
+    }
+
+    async function syncAllMapToCloud(uidStr, peopleList) {
+      if (!db) return;
+      const mapObj = {};
+      peopleList.forEach(p => { mapObj[p.id] = JSON.parse(JSON.stringify(p)); });
+      await set(ref(db, "users/" + uidStr + "/people"), mapObj);
+    }
+
+    async function manualSyncNow() {
+      if (!state.currentUser || !db || state.isSyncing) return;
+      const uidStr = state.currentUser.uid;
+      state.isSyncing = true;
+      updateCloudBadge("warning", "Синхронизация...");
+      try {
+        if (state.pendingQueue.upsertIds.length === 0 && state.pendingQueue.deleteIds.length === 0) {
+          await syncAllMapToCloud(uidStr, state.people);
+        } else {
+          for (const pid of state.pendingQueue.upsertIds) {
+            const p = state.people.find(item => item.id === pid);
+            if (p) await set(ref(db, "users/" + uidStr + "/people/" + p.id), JSON.parse(JSON.stringify(p)));
+          }
+          for (const delId of state.pendingQueue.deleteIds) {
+            await remove(ref(db, "users/" + uidStr + "/people/" + delId));
+          }
+        }
+        state.pendingQueue = { upsertIds: [], deleteIds: [] };
+        writePendingQueue(uidStr, state.pendingQueue);
+        updateCloudBadge("online", "Синхронизировано");
+        showToast("Синхронизация с облаком выполнена!", "success");
+      } catch (err) {
+        updateCloudBadge("error", "Ошибка облака");
+        showToast("Не удалось синхронизироваться. Проверьте интернет.", "error");
+      } finally {
+        state.isSyncing = false;
+        updateCloudBadge(state.pendingQueue.upsertIds.length + state.pendingQueue.deleteIds.length > 0 ? "warning" : "online", "Синхронизировано");
+      }
+    }
+
+    function createDefaultSampleState() {
+      const personId = uid("person");
+      const now = new Date();
+      const bday = new Date(now.getTime() + 5 * 86400000);
+      const bdayLabel = bday.getDate() + " " + MONTH_LABELS[bday.getMonth()];
+      const oldMeetingDate = new Date(now.getTime() - 10 * 86400000).toISOString().slice(0, 10);
+
+      return {
+        activePersonId: personId,
+        people: [
+          {
+            id: personId,
+            name: "Алина",
+            subtitle: "Подруга и продакт-дизайнер · Пример вкладки",
+            colorId: "violet",
+            isPinned: true,
+            group: "Друзья",
+            contactIntervalDays: 14,
+            updatedAt: now.toISOString(),
+            lastContactAt: new Date(now.getTime() - 10 * 86400000).toISOString(),
+            columns: [
+              { id: uid("col"), title: "Нравится", icon: "❤️", isNew: false, facts: [
+                { id: uid("fact"), text: "Уютные кофейни с тихим джазом", isNew: false, tag: "fact", reason: "", prevText: "" },
+                { id: uid("fact"), text: "Скандинавский минимализм и тёплый свет", isNew: false, tag: "fact", reason: "", prevText: "" },
+                { id: uid("fact"), text: "Дождливые вечера дома с хорошей книгой", isNew: false, tag: "fact", reason: "", prevText: "" }
+              ]},
+              { id: uid("col"), title: "Не нравится", icon: "👎", isNew: false, facts: [
+                { id: uid("fact"), text: "Когда опаздывают на встречи без предупреждения", isNew: false, tag: "fact", reason: "", prevText: "" },
+                { id: uid("fact"), text: "Шумные торговые центры по выходным", isNew: false, tag: "fact", reason: "", prevText: "" }
+              ]},
+              { id: uid("col"), title: "Увлечения", icon: "🎯", isNew: false, facts: [
+                { id: uid("fact"), text: "Плёночная фотография (снимает на старый Olympus)", isNew: false, tag: "fact", reason: "", prevText: "" },
+                { id: uid("fact"), text: "Утренние пробежки в парке по субботам", isNew: false, tag: "fact", reason: "", prevText: "" }
+              ]},
+              { id: uid("col"), title: "Еда и напитки", icon: "☕", isNew: false, facts: [
+                { id: uid("fact"), text: "Пьёт раф-кофе на кокосовом молоке без сахара", isNew: false, tag: "fact", reason: "", prevText: "" },
+                { id: uid("fact"), text: "Любит пасту с морепродуктами", isNew: false, tag: "fact", reason: "", prevText: "" }
+              ]},
+              { id: uid("col"), title: "Идеи подарков", icon: "🎁", isNew: false, facts: [
+                { id: uid("fact"), text: "Цветная фотоплёнка Kodak Portra 400 (35 мм)", isNew: false, tag: "fact", reason: "", prevText: "" },
+                { id: uid("fact"), text: "Сертификат на гончарный мастер-класс", isNew: false, tag: "fact", reason: "", prevText: "" }
+              ]},
+              { id: uid("col"), title: "Важные даты", icon: "📅", isNew: false, facts: [
+                { id: uid("fact"), text: "День рождения — " + bdayLabel, isNew: false, tag: "fact", reason: "", prevText: "" }
+              ]}
+            ],
+            rawNotes: [
+              { id: uid("note"), createdAt: new Date(now.getTime() - 10 * 86400000).toISOString(), text: "Познакомились на выставке плёночной фотографии. Алина снимает на старый Olympus, обожает тихие кофейни с джазом и кокосовый раф без сахара." }
+            ],
+            meetings: [
+              { id: uid("meet"), date: oldMeetingDate, type: "meeting", summary: "Пили кофе после выставки, обсуждали плёночную фотографию и планы на осень.", createdAt: new Date(now.getTime() - 10 * 86400000).toISOString() }
+            ]
+          }
+        ]
+      };
+    }
+
+    function loadScopedLocalState(scopeId) {
+      const dataKey = STORAGE_DATA_PREFIX + scopeId;
+      const tabKey = STORAGE_TAB_PREFIX + scopeId;
+      state.pendingQueue = readPendingQueue(scopeId);
+      state.people = [];
+      state.activePersonId = safeStorage.getItem(tabKey) || null;
+      state.draftText = "";
+      state.lastReport = null;
+      state.advisorQuery = "";
+      state.advisorAnswer = "";
+      state.selectedGroup = "Все";
+      clearSearchFilter();
+
+      try {
+        const raw = safeStorage.getItem(dataKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && Array.isArray(parsed.people)) {
+            state.people = normalizePeople(parsed.people);
+            if (!state.activePersonId || !state.people.some(p => p.id === state.activePersonId)) {
+              state.activePersonId = parsed.activePersonId || (state.people[0] ? state.people[0].id : null);
+            }
+            return true;
+          }
+        }
+      } catch {}
+
+      if (scopeId === "guest") {
+        const sample = createDefaultSampleState();
+        state.people = sample.people;
+        state.activePersonId = sample.activePersonId;
+      }
+      return false;
+    }
+
+    function connectUserCloudDatabase(user) {
+      if (unsubscribeCloud) { unsubscribeCloud(); unsubscribeCloud = null; }
+
+      if (!user || !db) {
+        updateCloudBadge("error", "Локальный режим");
+        loadScopedLocalState("guest");
+        showAppShell();
+        renderAll();
+        return;
+      }
+
+      const uidStr = user.uid;
+      loadScopedLocalState(uidStr);
+      showAppShell();
+      renderAll();
+      updateCloudBadge("warning", "Синхронизация...");
+
+      set(ref(db, "users/" + uidStr + "/profile"), {
+        displayName: getUserDisplayLabel(user),
+        email: user.email || "",
+        emailVerified: Boolean(user.emailVerified),
+        lastSeen: new Date().toISOString()
+      }).catch(() => {});
+
+      const peopleRef = ref(db, "users/" + uidStr + "/people");
+      let isFirstSnapshot = true;
+
+      unsubscribeCloud = onValue(
+        peopleRef,
+        (snapshot) => {
+          const activeTextarea = document.getElementById("analyzerTextarea");
+          if (activeTextarea) state.draftText = activeTextarea.value;
+          const advInput = document.getElementById("advisorInput");
+          if (advInput) state.advisorQuery = advInput.value;
+
+          if (snapshot.exists()) {
+            const rawVal = snapshot.val();
+            const cloudPeople = normalizePeople(rawVal);
+
+            // Миграция со старой структуры (числовые индексы массива) на карту по ID
+            const needsMigration = Array.isArray(rawVal) || (rawVal && typeof rawVal === "object" && Object.keys(rawVal).some(k => /^\d+$/.test(k)));
+            if (needsMigration && cloudPeople.length > 0) {
+              syncAllMapToCloud(uidStr, cloudPeople).catch(() => {});
+            }
+
+            // Безопасное слияние: не затираем локальные несинхронизированные правки
+            const localById = new Map(state.people.map(p => [p.id, p]));
+            const mergedMap = new Map();
+            cloudPeople.forEach(cp => {
+              if (state.pendingQueue.deleteIds.includes(cp.id)) return;
+              if (state.pendingQueue.upsertIds.includes(cp.id) && localById.has(cp.id)) {
+                mergedMap.set(cp.id, localById.get(cp.id));
+              } else {
+                mergedMap.set(cp.id, cp);
+              }
+            });
+            state.pendingQueue.upsertIds.forEach(pid => {
+              if (!mergedMap.has(pid) && localById.has(pid)) mergedMap.set(pid, localById.get(pid));
+            });
+
+            state.people = Array.from(mergedMap.values());
+            if (!state.activePersonId || !state.people.some(p => p.id === state.activePersonId)) {
+              state.activePersonId = state.people[0] ? state.people[0].id : null;
+            }
+            persistLocalSnapshot();
+            renderAll();
+          } else if (isFirstSnapshot && state.people.length > 0) {
+            syncAllMapToCloud(uidStr, state.people).catch(() => {});
+            renderAll();
+          } else {
+            state.people = state.pendingQueue.upsertIds.map(pid => state.people.find(p => p.id === pid)).filter(Boolean);
+            state.activePersonId = state.people[0] ? state.people[0].id : null;
+            persistLocalSnapshot();
+            renderAll();
+          }
+
+          isFirstSnapshot = false;
+          updateCloudBadge("online", "Синхронизировано");
+        },
+        (err) => {
+          console.error(err);
+          updateCloudBadge("error", "Ошибка доступа к БД");
+          showToast("Нет доступа к ветке пользователя в Firebase.", "error");
+        }
+      );
+    }
+
+    function openAccountModal() {
+      const box = document.getElementById("accountModalContent");
+      const logoutBtn = document.getElementById("logoutBtn");
+
+      if (state.currentUser) {
+        const u = state.currentUser;
+        const display = getUserDisplayLabel(u);
+        const synthetic = isSyntheticLoginEmail(u.email);
+        const loginShown = synthetic ? u.email.replace("@notebook.app", "") : (u.email || "—");
+        const pendingCount = state.pendingQueue.upsertIds.length + state.pendingQueue.deleteIds.length;
+
+        box.innerHTML = `
+          <div class="account-info-box">
+            <div class="account-info-row"><span>Имя пользователя:</span><strong>${escapeHtml(display)}</strong></div>
+            <div class="account-info-row"><span>Логин / Email:</span><strong>${escapeHtml(loginShown)}</strong></div>
+            <div class="account-info-row">
+              <span>Статус почты:</span>
+              <strong style="color: ${synthetic ? "var(--warning-text)" : (u.emailVerified ? "var(--success-text)" : "var(--warning-text)")};">
+                ${synthetic ? "⚠️ Не привязана" : (u.emailVerified ? "✅ Подтверждена" : "⏳ Ожидает подтверждения")}
+              </strong>
+            </div>
+            <div class="account-info-row">
+              <span>Синхронизация:</span>
+              <strong style="color: ${pendingCount > 0 ? "var(--warning-text)" : "var(--success-text)"};">
+                ${pendingCount > 0 ? "Не сохранено правок: " + pendingCount : "Все изменения сохранены"}
+              </strong>
+            </div>
+          </div>
+
+          <button id="modalManualSyncBtn" class="btn btn-secondary" type="button" style="width: 100%; margin-top: 12px;">
+            🔄 Синхронизировать сейчас
+          </button>
+
+          <div class="bind-email-box">
+            <div style="font-size: 13px; font-weight: 700; margin-bottom: 6px;">
+              ✉️ ${synthetic ? "Привязать реальный Email" : "Управление Email и паролем"}
+            </div>
+            ${synthetic ? `
+              <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 10px; line-height: 1.45;">
+                Вы вошли по короткому логину без почты. Привяжите Email, чтобы при потере пароля можно было восстановить доступ через «Забыли пароль?».
+              </p>
+            ` : `
+              <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
+                ${!u.emailVerified ? `<button id="resendVerifyBtn" class="btn btn-secondary" type="button" style="padding: 6px 10px; font-size: 12px;">Отправить подтверждение</button>` : ""}
+                <button id="accountResetPassBtn" class="btn btn-secondary" type="button" style="padding: 6px 10px; font-size: 12px;">🔑 Сменить пароль по Email</button>
+              </div>
+            `}
+
+            <div id="bindEmailMsg" class="hidden" style="font-size: 12px; padding: 8px 10px; border-radius: 8px; margin-bottom: 10px;"></div>
+
+            <form id="bindEmailForm">
+              <div class="form-group" style="margin-bottom: 10px;">
+                <label class="form-label" for="bindEmailInput">${synthetic ? "Новый реальный Email *" : "Сменить Email на другой"}</label>
+                <input id="bindEmailInput" class="form-input" type="email" required placeholder="example@gmail.com" />
+              </div>
+              <div class="form-group" style="margin-bottom: 10px;">
+                <label class="form-label" for="bindCurrentPassInput">Текущий пароль *</label>
+                <input id="bindCurrentPassInput" class="form-input" type="password" required placeholder="Подтвердите текущим паролем" />
+              </div>
+              <button id="bindEmailSubmitBtn" class="btn btn-primary" type="submit" style="width: 100%;">
+                Привязать Email
+              </button>
+            </form>
+          </div>
+        `;
+
+        document.getElementById("modalManualSyncBtn").addEventListener("click", manualSyncNow);
+
+        const resendBtn = document.getElementById("resendVerifyBtn");
+        if (resendBtn) {
+          resendBtn.addEventListener("click", async () => {
+            try {
+              auth.languageCode = "ru";
+              await sendEmailVerification(u);
+              showToast("Письмо подтверждения отправлено на " + u.email, "success");
+            } catch (err) { showToast(getHumanFirebaseAuthError(err), "error"); }
+          });
+        }
+
+        const resetBtn = document.getElementById("accountResetPassBtn");
+        if (resetBtn) {
+          resetBtn.addEventListener("click", async () => {
+            try {
+              auth.languageCode = "ru";
+              await sendPasswordResetEmail(auth, u.email);
+              showToast("Ссылка для смены пароля отправлена на " + u.email, "success");
+            } catch (err) { showToast(getHumanFirebaseAuthError(err), "error"); }
+          });
+        }
+
+        document.getElementById("bindEmailForm").addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const newMail = document.getElementById("bindEmailInput").value.trim().toLowerCase();
+          const curPass = document.getElementById("bindCurrentPassInput").value;
+          const msgEl = document.getElementById("bindEmailMsg");
+          const btn = document.getElementById("bindEmailSubmitBtn");
+
+          if (!newMail.includes("@") || isSyntheticLoginEmail(newMail)) {
+            msgEl.textContent = "Укажите настоящий Email (например: name@gmail.com).";
+            msgEl.style.cssText = "font-size:12px;padding:8px 10px;border-radius:8px;margin-bottom:10px;background:var(--danger-bg);color:var(--danger-text);border:1px solid var(--danger-border);";
+            msgEl.classList.remove("hidden");
+            return;
+          }
+
+          btn.disabled = true;
+          btn.textContent = "Отправка подтверждения...";
+          try {
+            auth.languageCode = "ru";
+            const cred = EmailAuthProvider.credential(u.email, curPass);
+            await reauthenticateWithCredential(u, cred);
+            await verifyBeforeUpdateEmail(u, newMail);
+            if (db) {
+              set(ref(db, "users/" + u.uid + "/profile"), {
+                displayName: display,
+                email: u.email,
+                pendingEmail: newMail,
+                lastSeen: new Date().toISOString()
+              }).catch(() => {});
+            }
+            msgEl.textContent = "Письмо с подтверждением отправлено на " + newMail + ". Перейдите по ссылке в письме, чтобы завершить привязку!";
+            msgEl.style.cssText = "font-size:12px;padding:8px 10px;border-radius:8px;margin-bottom:10px;background:var(--success-bg);color:var(--success-text);border:1px solid var(--success-border);";
+            msgEl.classList.remove("hidden");
+            document.getElementById("bindEmailInput").value = "";
+            document.getElementById("bindCurrentPassInput").value = "";
+            showToast("Письмо для привязки Email отправлено", "success");
+          } catch (err) {
+            msgEl.textContent = getHumanFirebaseAuthError(err);
+            msgEl.style.cssText = "font-size:12px;padding:8px 10px;border-radius:8px;margin-bottom:10px;background:var(--danger-bg);color:var(--danger-text);border:1px solid var(--danger-border);";
+            msgEl.classList.remove("hidden");
+          } finally {
+            btn.disabled = false;
+            btn.textContent = "Привязать Email";
+          }
+        });
+
+        logoutBtn.textContent = "🚪 Выйти / Сменить аккаунт";
+      } else {
+        box.innerHTML = `
+          <div class="account-info-box">
+            <div class="account-info-row"><span>Режим работы:</span><strong>Гостевой (только это устройство)</strong></div>
+          </div>
+          <p style="font-size: 12.5px; color: var(--text-secondary); margin-top: 12px; line-height: 1.5;">
+            Сейчас записи сохраняются только в браузере этого устройства. Войдите или создайте аккаунт, чтобы синхронизировать блокнот и привязать Email для восстановления пароля.
+          </p>
+        `;
+        logoutBtn.textContent = "🔐 Войти или создать аккаунт";
+      }
+
+      openModal("accountModal");
+    }
+
+    /* ========================================================================
+       СЕМАНТИЧЕСКОЕ ЯДРО, GEMINI API (С ЯВНЫМ ФОЛБЭК-ТОСТОМ) И ИИ-ДОСЬЕ
+       ======================================================================== */
+    const RU_STOPWORDS = new Set([
+      "и", "в", "во", "не", "что", "он", "на", "я", "с", "со", "как", "а", "то", "все", "она", "так",
+      "его", "но", "да", "ты", "к", "у", "же", "вы", "за", "бы", "по", "только", "ее", "мне", "было",
+      "вот", "от", "меня", "еще", "нет", "о", "из", "ему", "теперь", "когда", "даже", "ну", "ли",
+      "если", "уже", "или", "ни", "быть", "был", "него", "до", "вас", "опять", "вам", "ведь", "там",
+      "потом", "себя", "ничего", "ей", "может", "они", "тут", "где", "есть", "надо", "ней", "для", "мы",
+      "тебя", "их", "чем", "была", "сам", "чтоб", "без", "будто", "чего", "раз", "тоже", "себе", "под",
+      "будет", "тогда", "кто", "этот", "того", "потому", "этого", "какой", "совсем", "ним", "здесь",
+      "один", "почти", "мой", "тем", "чтобы", "нее", "сейчас", "были", "куда", "зачем", "всех", "можно",
+      "при", "наконец", "об", "другой", "хоть", "после", "над", "больше", "тот", "через", "эти", "нас",
+      "про", "всего", "них", "какая", "много", "эту", "моя", "впрочем", "хорошо", "свою", "этой", "перед",
+      "иногда", "лучше", "чуть", "том", "нельзя", "такой", "им", "более", "всегда", "конечно", "всю",
+      "очень", "просто", "кстати", "оказывается", "сегодня", "вчера", "позавчера", "давно", "пока",
+      "сильн", "сильная", "сильный", "сильно", "дома", "живет", "живёт"
+    ]);
+
+    const CANONICAL_STEM_GROUPS = [
+      { canon: "любить", roots: ["люб", "обожа", "нрав", "фанат", "восторг", "тащит"] },
+      { canon: "нелюбить", roots: ["ненавид", "раздража", "бес", "вынос"] },
+      { canon: "бег", roots: ["бег", "пробежк", "пробеж", "бега", "марафон"] },
+      { canon: "утро", roots: ["утр", "утрен", "утренн"] },
+      { canon: "вечер", roots: ["вечер", "вечерн"] },
+      { canon: "кофе", roots: ["коф", "раф", "латт", "капучин", "американо", "эспрессо"] },
+      { canon: "кот", roots: ["кот", "кошк", "котен", "котя"] },
+      { canon: "собака", roots: ["собак", "пес", "пса", "щен"] },
+      { canon: "аллергия", roots: ["аллерг", "неперенос", "противопоказан"] },
+      { canon: "мечта", roots: ["мечт", "хочет", "хотел", "жела", "грезит"] },
+      { canon: "поездка", roots: ["поехат", "съездит", "слетат", "путешеств", "поездк"] },
+      { canon: "пунктуальность", roots: ["пунктуальн", "заранее", "опаздан", "опоздан"] },
+      { canon: "планы", roots: ["план", "планир", "расписан"] },
+      { canon: "фото", roots: ["фот", "фотограф", "снима", "камер", "пленк", "пленочн"] },
+      { canon: "музыка", roots: ["музык", "песн", "трек", "слуша", "альбом"] },
+      { canon: "книги", roots: ["книг", "чита", "чтен", "роман", "литератур"] },
+      { canon: "кино", roots: ["кин", "фильм", "сериал", "смотр"] }
+    ];
+
+    function stemRu(word) {
+      let w = String(word || "").toLowerCase().replace(/ё/g, "е").replace(/[^а-яa-z0-9-]/g, "");
+      if (w.length <= 3) return w;
+      const suffixes = [
+        "ованию", "еванию", "ировать", "оваться", "еваться", "аться", "яться", "иться", "еться", "уться",
+        "ющими", "ащими", "ящими", "ыми", "ими", "ого", "его", "ому", "ему", "ами", "ями", "ах", "ях",
+        "ом", "ем", "ой", "ей", "ую", "юю", "ать", "ять", "ить", "еть", "уть", "ешь", "ишь", "ете", "ите",
+        "ют", "ут", "ят", "ат", "ет", "ит", "ла", "ло", "ли", "ов", "ев", "ий", "ый", "ая", "яя", "ое", "ее",
+        "ые", "ие", "ам", "ям", "ка", "ку", "ки", "ке", "кой", "а", "я", "о", "е", "ы", "и", "у", "ю", "ь"
+      ];
+      for (const suf of suffixes) {
+        if (w.endsWith(suf) && w.length - suf.length >= 3) { w = w.slice(0, w.length - suf.length); break; }
+      }
+      if (w.length >= 4 && w[w.length - 1] === w[w.length - 2]) w = w.slice(0, -1);
+      return w;
+    }
+
+    function canonicalizeStem(stem) {
+      for (const grp of CANONICAL_STEM_GROUPS) {
+        if (grp.roots.some(r => stem === r || stem.startsWith(r))) return grp.canon;
+      }
+      return stem;
+    }
+
+    function extractStems(text) {
+      const words = String(text || "").toLowerCase().replace(/ё/g, "е").split(/[^а-яa-z0-9-]+/).filter(w => w.length >= 2 && !RU_STOPWORDS.has(w));
+      return new Set(words.map(stemRu).filter(s => s.length >= 2 && !RU_STOPWORDS.has(s)).map(canonicalizeStem));
+    }
+
+    function detectPolarity(text) {
+      const low = String(text || "").toLowerCase().replace(/ё/g, "е");
+      return /(?:^|[^а-яa-z])(?:не|нет|никогда|без|отказал(?:ся|ась)\s+от|бросил[а]?|перестал[а]?|больше\s+не|терпеть\s+не\s+может|ненавидит|раздражает|избегает)(?:[^а-яa-z]|$)/i.test(low) ? -1 : 1;
+    }
+
+    function getCharNgrams(text, n) {
+      const clean = String(text || "").toLowerCase().replace(/ё/g, "е").replace(/[^а-яa-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+      const grams = new Set();
+      if (clean.length < n) { if (clean) grams.add(clean); return grams; }
+      for (let i = 0; i <= clean.length - n; i++) grams.add(clean.slice(i, i + n));
+      return grams;
+    }
+
+    function charDiceSimilarity(a, b) {
+      const gA = getCharNgrams(a, 3), gB = getCharNgrams(b, 3);
+      if (!gA.size || !gB.size) return 0;
+      let hit = 0;
+      gB.forEach(g => { if (gA.has(g)) hit++; });
+      return (2 * hit) / (gA.size + gB.size);
+    }
+
+    function compareFacts(existingText, candidateText) {
+      const norm = s => String(s || "").toLowerCase().replace(/ё/g, "е").replace(/[.,!?;:«»"()—–-]/g, "").replace(/\s+/g, " ").trim();
+      const a = norm(existingText), b = norm(candidateText);
+      if (!b || b.length < 2) return "duplicate";
+      if (a === b) return "duplicate";
+
+      const polA = detectPolarity(a), polB = detectPolarity(b);
+      const stemsA = extractStems(a), stemsB = extractStems(b);
+      if (!stemsA.size || !stemsB.size) return charDiceSimilarity(a, b) >= 0.72 ? "duplicate" : "distinct";
+
+      let intersection = 0;
+      stemsB.forEach(s => { if (stemsA.has(s)) intersection++; });
+      const union = stemsA.size + stemsB.size - intersection;
+      const jaccard = union > 0 ? intersection / union : 0;
+      const recallOfExisting = intersection / stemsA.size;
+      const minRecall = Math.max(recallOfExisting, intersection / stemsB.size);
+      const dice3 = charDiceSimilarity(a, b);
+
+      if (polA !== polB && intersection >= 1 && (minRecall >= 0.5 || dice3 >= 0.45)) return "contradict";
+      if (polA === polB) {
+        if (a.length >= 10 && a.includes(b)) return "duplicate";
+        if (b.length >= 10 && b.includes(a)) return b.length > a.length + 7 ? "enrich" : "duplicate";
+      }
+      if (polA === polB && stemsB.size > stemsA.size && recallOfExisting >= 0.85 && b.length > a.length + 7) return "enrich";
+      const isSemanticDup = jaccard >= 0.5 || (Math.min(stemsA.size, stemsB.size) >= 2 && minRecall >= 0.72) || (dice3 >= 0.64 && intersection >= 1) || (jaccard >= 0.38 && dice3 >= 0.52);
+      return (isSemanticDup && polA === polB) ? "duplicate" : "distinct";
+    }
+
+    function findFactRelationAcrossPerson(person, candidateText, replacesHint) {
+      if (replacesHint) {
+        for (const col of person.columns) {
+          for (const fact of col.facts) {
+            const rel = compareFacts(fact.text, replacesHint);
+            if (rel !== "distinct") return { type: "contradict", col, fact };
+          }
+        }
+      }
+      for (const col of person.columns) {
+        for (const fact of col.facts) {
+          if (compareFacts(fact.text, candidateText) === "duplicate") return { type: "duplicate", col, fact };
+        }
+      }
+      for (const col of person.columns) {
+        for (const fact of col.facts) {
+          if (compareFacts(fact.text, candidateText) === "enrich") return { type: "enrich", col, fact };
+        }
+      }
+      const hasChangeMarker = /(?:теперь|переш[её]л на|перешла на|отказал(?:ся|ась) от|больше не|вместо|бросил[а]?|сменил[а]?|пь[её]т только)/i.test(candidateText);
+      const newStems = extractStems(candidateText);
+      const domainPairs = [["кофе", "матч", "ча"], ["вегетариан", "мяс", "веган", "рыб"], ["живет", "переехал", "город", "квартир"], ["работа", "должност", "компан", "уволил"]];
+
+      for (const col of person.columns) {
+        for (const existing of col.facts) {
+          if (compareFacts(existing.text, candidateText) === "contradict") return { type: "contradict", col, fact: existing };
+          if (hasChangeMarker && newStems.size > 0) {
+            const oldStems = extractStems(existing.text);
+            let overlap = 0;
+            newStems.forEach(s => { if (oldStems.has(s)) overlap++; });
+            let sameDomain = overlap >= 1;
+            if (!sameDomain) {
+              domainPairs.forEach(group => {
+                if (group.some(g => Array.from(newStems).some(s => s.startsWith(g))) && group.some(g => Array.from(oldStems).some(s => s.startsWith(g)))) sameDomain = true;
+              });
+            }
+            if (sameDomain) return { type: "contradict", col, fact: existing };
+          }
+        }
+      }
+      return { type: "distinct", col: null, fact: null };
+    }
+
+    function deduplicatePersonFacts(person) {
+      if (!person) return 0;
+      const keptFacts = [];
+      let removedCount = 0;
+      person.columns.forEach(col => {
+        const cleanList = [];
+        col.facts.forEach(fact => {
+          const dupIndex = keptFacts.findIndex(k => {
+            const rel = compareFacts(k.text, fact.text);
+            return rel === "duplicate" || rel === "enrich";
+          });
+          if (dupIndex !== -1) {
+            if (fact.text.length > keptFacts[dupIndex].text.length + 7 && compareFacts(keptFacts[dupIndex].text, fact.text) === "enrich") {
+              keptFacts[dupIndex].text = fact.text;
+            }
+            removedCount++;
+          } else {
+            keptFacts.push(fact);
+            cleanList.push(fact);
+          }
+        });
+        col.facts = cleanList;
+      });
+      return removedCount;
+    }
+
+    function getEffectiveApiKey() {
+      return (safeStorage.getItem(STORAGE_API_KEY) || "").trim();
+    }
+
+    function detectInitialEngine() {
+      state.activeEngine = getEffectiveApiKey() ? "gemini" : "local";
+      updateEngineBadge();
+    }
+
+    function updateEngineBadge() {
+      const badge = document.getElementById("engineStatusBadge");
+      if (!badge) return;
+      if (state.activeEngine === "gemini") {
+        badge.classList.remove("is-local");
+        badge.textContent = "⚡ Gemini AI";
+      } else {
+        badge.classList.add("is-local");
+        badge.textContent = "🧠 Локальный ИИ";
+      }
+    }
+
+    function showToast(message, type) {
+      const container = document.getElementById("toastContainer");
+      while (container.children.length >= 2) container.removeChild(container.firstChild);
+      const toast = document.createElement("div");
+      toast.className = "toast " + (type || "info");
+      const msgSpan = document.createElement("span");
+      msgSpan.textContent = message;
+      const closeBtn = document.createElement("button");
+      closeBtn.type = "button";
+      closeBtn.textContent = "×";
+      closeBtn.style.fontSize = "16px";
+      closeBtn.style.opacity = "0.7";
+      closeBtn.addEventListener("click", () => toast.remove());
+      toast.appendChild(msgSpan);
+      toast.appendChild(closeBtn);
+      container.appendChild(toast);
+      setTimeout(() => { if (toast.parentNode) toast.remove(); }, 4500);
+    }
+
+    function copyToClipboard(text) {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand("copy");
+        showToast("Текст скопирован в буфер обмена", "success");
+      } catch { showToast("Не удалось скопировать текст", "error"); }
+      document.body.removeChild(ta);
+    }
+
+    function cleanAndParseJson(rawText) {
+      return JSON.parse(String(rawText).replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim());
+    }
+
+    function formatGeminiFallbackReason(err) {
+      const msg = err && err.message ? err.message : String(err || "");
+      if (msg === "NO_API_KEY") return "API-ключ Gemini не указан — разбор выполнен локально";
+      if (msg === "OFFLINE") return "Нет сети — разбор выполнен локально";
+      if (msg === "TIMEOUT") return "Gemini не ответил вовремя, разбор выполнен локально";
+      if (msg.startsWith("HTTP_")) return "Gemini вернул ошибку (" + msg.replace("HTTP_", "") + "), разбор выполнен локально";
+      return "Не удалось получить ответ от Gemini, разбор выполнен локально";
+    }
+
+    async function callGeminiWithSchema(payload, timeoutMs) {
+      const activeKey = getEffectiveApiKey();
+      if (!activeKey) throw new Error("NO_API_KEY");
+      const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + encodeURIComponent(activeKey);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs || 18000);
+      try {
+        const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: controller.signal });
+        if (!response.ok) throw new Error("HTTP_" + response.status);
+        const data = await response.json();
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) throw new Error("EMPTY_AI_RESPONSE");
+        return cleanAndParseJson(text);
+      } catch (err) {
+        if (err && err.name === "AbortError") throw new Error("TIMEOUT");
+        throw err;
+      } finally { clearTimeout(timer); }
+    }
+
+    async function analyzeTextWithGemini(person, rawText) {
+      const existingCols = person.columns.map(c => ({ columnTitle: c.title, existingFacts: c.facts.map(f => f.text) }));
+      const otherPeopleNames = state.people.filter(p => p.id !== person.id).map(p => p.name);
+      const systemPrompt =
+        `Ты — элитный когнитивный аналитик персонального блокнота о людях. Проанализируй заметку о "${person.name}".\n` +
+        `Подзаголовок: "${person.subtitle || ""}". Другие люди: ${JSON.stringify(otherPeopleNames)}.\n` +
+        `Текущие колонки и факты:\n${JSON.stringify(existingCols, null, 2)}\n` +
+        `Не дублируй уже известные факты. Разбивай сложные фразы на короткие атомарные факты. Добавляй tag: "ai_inference" с полем reason для выводов и tag: "updated" с replacesOldFact для обновлений/противоречий.`;
+
+      return await callGeminiWithSchema({
+        contents: [{ role: "user", parts: [{ text: systemPrompt + "\n\nНовый текст:\n" + rawText }] }],
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: "OBJECT",
+            properties: {
+              summary: { type: "STRING" },
+              suggestedSubtitle: { type: "STRING" },
+              updates: {
+                type: "ARRAY",
+                items: {
+                  type: "OBJECT",
+                  properties: {
+                    columnTitle: { type: "STRING" }, isNewColumn: { type: "BOOLEAN" }, icon: { type: "STRING" },
+                    facts: { type: "ARRAY", items: { type: "OBJECT", properties: { text: { type: "STRING" }, tag: { type: "STRING" }, reason: { type: "STRING" }, replacesOldFact: { type: "STRING" } }, required: ["text", "tag"] } }
+                  },
+                  required: ["columnTitle", "isNewColumn", "icon", "facts"]
+                }
+              }
+            },
+            required: ["summary", "updates"]
+          }
+        }
+      }, 18000);
+    }
+
+    function normalizeClauseToAtomicFact(clause, personName) {
+      let s = String(clause || "").trim();
+      if (!s) return "";
+      [
+        /^(?:сегодня|вчера|позавчера|недавно|на днях|кстати|оказывается|как выяснилось)[,\s]+/i,
+        /^(?:долго\s+)?(?:болтали|поболтали|говорили|поговорили|общались|переписывались|встречались)\s+с\s+[А-ЯЁA-Za-z-]+[.,!\s]*/i,
+        /^(?:я\s+)?(?:узнал[а]?|выяснил[а]?|заметил[а]?|понял[а]?|вспомнил[а]?)[,\s]+что\s+/i,
+        /^(?:ещё|также|кроме того)\s+/i
+      ].forEach(rx => { s = s.replace(rx, "").trim(); });
+      if (personName) {
+        const esc = personName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        s = s.replace(new RegExp("^" + esc + "\\s+(?:признал(?:ся|ась),\\s+что|сказал[а]?,\\s+что|рассказал[а]?,\\s+что)\\s+", "i"), "").trim();
+        s = s.replace(new RegExp("^" + esc + "\\s+", "i"), "").trim();
+      }
+      s = s.replace(/^(?:он|она)\s+(?:недавно\s+)?/i, "").replace(/^у\s+(?:неё|него)\s+(?:сильная\s+|есть\s+)?/i, "")
+        .replace(/^дома\s+у\s+(?:неё|него)\s+жив[её]т\s+/i, "Дома живёт ").replace(/^всё\s+время\s+/i, "Всегда ").trim();
+      return s.length < 3 ? "" : s.charAt(0).toUpperCase() + s.slice(1);
+    }
+
+    function splitSentenceIntoSmartClauses(sentence, personName) {
+      const rawParts = sentence.split(/(?:,\s*(?=а вот|но |а ещё|ещё |также |кроме того|зато |при этом|однако |а осенью|а летом|а зимой|а весной|а по )|\s+и теперь\s+|\s+и (?=(?:строит|бегает|работает|любит|не любит|хочет|мечтает|планирует|увлекается|коллекционирует|занимается|обожает|ненавидит|водит|учится|жив[её]т|пь[её]т|ест)\b))/i);
+      const merged = [];
+      for (const rawPart of rawParts) {
+        const part = rawPart.trim();
+        if (!part) continue;
+        if (/^(?:но\s+пока|пока\s+не|потому\s+что|так\s+как|хотя\s+пока|но\s+очень\s+редко)/i.test(part) && merged.length > 0) {
+          merged[merged.length - 1] += " (" + part.replace(/^но\s+/i, "").trim().toLowerCase() + ")";
+          continue;
+        }
+        const norm = normalizeClauseToAtomicFact(part, personName);
+        if (norm.length >= 3) merged.push(norm);
+      }
+      return merged;
+    }
+
+    function analyzeTextLocally(person, rawText) {
+      const categories = [
+        { title: "Аллергии и здоровье", icon: "🩺", stems: ["аллерг", "неперенос", "противопоказан", "здоров", "диет", "лактоз", "глютен", "вегетариан", "веган"], patterns: [/аллерг/i, /не перенос/i, /противопоказан/i] },
+        { title: "Еда и напитки", icon: "☕", stems: ["коф", "раф", "латт", "капучин", "американо", "ча", "матч", "ед", "блюд", "пицц", "суш", "паст", "напит", "молок", "овсян"], patterns: [/кофе/i, /раф/i, /матч/i, /пь[её]т/i, /ест\b/i] },
+        { title: "Питомцы", icon: "🐾", stems: ["кот", "кошк", "котен", "собак", "пес", "щен", "питом", "кличк"], patterns: [/кот\b/i, /кошк/i, /собак/i, /питом/i] },
+        { title: "Семья и окружение", icon: "👨‍👩‍👧", stems: ["мам", "пап", "родител", "брат", "сестр", "муж", "жен", "сын", "доч", "сем", "подруг", "друг"], patterns: [/мама/i, /папа/i, /семь/i, /дружит с/i] },
+        { title: "Мечты и цели", icon: "🚀", stems: ["мечт", "цел", "науч", "поступ", "переехат", "увидет", "достич"], patterns: [/мечтает/i, /хочет научиться/i] },
+        { title: "Путешествия", icon: "✈️", stems: ["путешеств", "поехат", "слетат", "съездит", "япон", "киот", "токи", "итал", "отпуск", "стран"], patterns: [/путешеств/i, /поехать в/i, /съездить в/i, /япони/i, /киото/i] },
+        { title: "Культура и медиа", icon: "🎬", stems: ["фильм", "кин", "сериал", "книг", "музык", "слуша", "чита", "смотр", "укулел", "гитар"], patterns: [/фильм/i, /книг/i, /музык/i, /играть на/i] },
+        { title: "Привычки и режим", icon: "⏰", stems: ["утрен", "вечер", "режим", "привычк", "пробежк", "бега", "заранее", "план"], patterns: [/приходит .* заранее/i, /по утрам/i, /строит планы/i] },
+        { title: "Характер и ценности", icon: "🧠", stems: ["характер", "ценност", "интроверт", "экстраверт", "пунктуальн", "ответствен"], patterns: [/пунктуальн/i, /ценит/i] },
+        { title: "Идеи подарков", icon: "🎁", stems: ["подар", "подарит", "вишлист", "сертификат"], patterns: [/подарок/i, /подарить/i] },
+        { title: "Важные даты", icon: "📅", stems: ["рожден", "годовщин", "юбиле", "праздник"], patterns: [/день рождения/i, /\bдр\b/i, /\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)/i] },
+        { title: "Работа и карьера", icon: "💼", stems: ["работа", "должност", "менеджер", "разработчик", "дизайнер", "компан", "офис", "карьер"], patterns: [/работает/i, /дизайнер/i, /разработчик/i] },
+        { title: "Не нравится", icon: "👎", stems: ["ненавид", "бес", "раздража", "вынос"], patterns: [/не нравится/i, /не любит/i, /терпеть не может/i] },
+        { title: "Нравится", icon: "❤️", stems: ["нрав", "люб", "обожа", "фанат"], patterns: [/нравится/i, /любит/i, /обожает/i] }
+      ];
+
+      const grouped = new Map();
+      const batchTexts = [];
+      let suggestedSubtitle = "";
+
+      function ensureGroup(colTitle, icon) {
+        const cleanTitle = colTitle.trim();
+        if (!grouped.has(cleanTitle)) {
+          const existingCol = person.columns.find(c => c.title.trim().toLowerCase() === cleanTitle.toLowerCase());
+          grouped.set(cleanTitle, {
+            columnTitle: existingCol ? existingCol.title : cleanTitle,
+            isNewColumn: !existingCol,
+            icon: existingCol ? existingCol.icon : (icon || "📌"),
+            facts: []
+          });
+        }
+        return grouped.get(cleanTitle);
+      }
+
+      function pushFactItem(colTitle, icon, factText, preferredTag, reasonText) {
+        const cleanFact = String(factText || "").trim();
+        if (cleanFact.length < 3) return;
+        const formatted = cleanFact.charAt(0).toUpperCase() + cleanFact.slice(1);
+        if (batchTexts.some(prev => { const r = compareFacts(prev, formatted); return r === "duplicate" || r === "enrich"; })) return;
+        const relAcross = findFactRelationAcrossPerson(person, formatted, "");
+        if (relAcross.type === "duplicate") return;
+
+        const group = ensureGroup(colTitle, icon);
+        let finalTag = preferredTag || "fact", replacesOldFact = "", finalReason = reasonText || "";
+        if ((relAcross.type === "enrich" || relAcross.type === "contradict") && relAcross.fact) {
+          finalTag = "updated";
+          replacesOldFact = relAcross.fact.text;
+          if (!finalReason) finalReason = relAcross.type === "enrich" ? "Дополнено деталями" : "Обновлено";
+        }
+        batchTexts.push(formatted);
+        group.facts.push({ text: formatted, tag: finalTag, reason: finalReason, replacesOldFact });
+      }
+
+      state.people.forEach(other => {
+        if (other.id === person.id) return;
+        const esc = other.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        if (new RegExp("(?:^|[^А-ЯЁа-яё])" + esc + "(?:[^А-ЯЁа-яё]|$)", "i").test(rawText)) {
+          pushFactItem("Семья и окружение", "👨‍👩‍👧", "Знакома/общается с «" + other.name + "»", "ai_inference", "Упоминание в заметке");
+        }
+      });
+
+      rawText.split(/[.!?\n]+/).map(s => s.trim()).filter(s => s.length > 2).forEach(sentence => {
+        const colonMatch = sentence.match(/^([А-ЯЁA-Za-z0-9\s-]{2,32}):\s*(.+)$/);
+        if (colonMatch && !/^\d{1,2}$/.test(colonMatch[1].trim())) {
+          pushFactItem(colonMatch[1].trim(), "📌", colonMatch[2].trim(), "fact", "");
+          return;
+        }
+        splitSentenceIntoSmartClauses(sentence, person.name).forEach(normalized => {
+          const roleMatch = normalized.match(/(?:работает|устроилась|устроился|стала|стал)\s+([а-яёa-z0-9\s-]{4,40})/i);
+          if (roleMatch && (!person.subtitle || person.subtitle.includes("Личная карточка"))) {
+            suggestedSubtitle = roleMatch[1].trim().charAt(0).toUpperCase() + roleMatch[1].trim().slice(1);
+          }
+          const clauseStems = extractStems(normalized);
+          const hasNeg = /(?:не любит|не нравится|терпеть не может|ненавидит|отказал(?:ся|ась) от)/i.test(normalized);
+          let bestCat = null, bestScore = 0;
+          categories.forEach(cat => {
+            if (hasNeg && cat.title === "Нравится") return;
+            let score = 0;
+            if (cat.patterns.some(rx => rx.test(normalized))) score += 3;
+            cat.stems.forEach(st => { if (clauseStems.has(st)) score += 2; });
+            if (score > bestScore) { bestScore = score; bestCat = cat; }
+          });
+          if (bestCat) pushFactItem(bestCat.title, bestCat.icon, normalized, "fact", "");
+          else pushFactItem("Разные заметки", "📝", normalized, "fact", "");
+
+          if (/аллерг.*(?:арахис|орех|м[её]д|лактоз|глютен|цитрус)/i.test(normalized)) {
+            const am = normalized.match(/аллерг[а-я]*\s+на\s+([^,.!?()]+)/i);
+            pushFactItem("Идеи подарков", "🎁", "Строго без продуктов, содержащих " + (am ? am[1].trim() : "аллергены"), "ai_inference", "Из-за выявленной аллергии");
+          }
+          if (/укулел/i.test(normalized)) pushFactItem("Идеи подарков", "🎁", "Укулеле (сопрано или концерт) и чехол/тюнер", "ai_inference", "Из мечты играть на укулеле");
+          if (/(?:япони|киот|токи)/i.test(normalized)) pushFactItem("Идеи подарков", "🎁", "Авторский путеводитель по Киото или тревел-органайзер", "ai_inference", "Из планов поехать в Японию");
+          if (/(?:матч[ауе]|овсяном молоке)/i.test(normalized)) pushFactItem("Идеи подарков", "🎁", "Церемониальный японский чай матча и венчик тясэн", "ai_inference", "Из перехода на матчу");
+          if (/(?:приходит .* заранее|строит планы)/i.test(normalized)) pushFactItem("Характер и ценности", "🧠", "Высокая пунктуальность, системность и любовь к планированию", "ai_inference", "Приходит заранее и планирует наперёд");
+        });
+      });
+
+      return { summary: "Текст разобран локальным семантическим ИИ.", suggestedSubtitle, updates: Array.from(grouped.values()) };
+    }
+
+    async function runTextAnalysis() {
+      const person = getActivePerson();
+      if (!person || state.isAnalyzing) return;
+      const textarea = document.getElementById("analyzerTextarea");
+      const rawText = (textarea ? textarea.value : state.draftText).trim();
+      if (!rawText) { showToast("Введите или вставьте текст для анализа", "warning"); return; }
+
+      state.draftText = rawText;
+      state.isAnalyzing = true;
+      renderMain();
+
+      const snapshotBefore = JSON.parse(JSON.stringify(person));
+      let result = null;
+      let fallbackReason = "";
+
+      try {
+        if (!navigator.onLine) throw new Error("OFFLINE");
+        if (!getEffectiveApiKey()) throw new Error("NO_API_KEY");
+        result = await analyzeTextWithGemini(person, rawText);
+        state.activeEngine = "gemini";
+      } catch (err) {
+        state.activeEngine = "local";
+        if (err && err.message !== "NO_API_KEY") {
+          fallbackReason = formatGeminiFallbackReason(err);
+          showToast(fallbackReason, "warning");
+        }
+        result = analyzeTextLocally(person, rawText);
+      }
+      updateEngineBadge();
+
+      person.columns.forEach(col => { col.isNew = false; col.facts.forEach(f => { f.isNew = false; }); });
+      if (result && result.suggestedSubtitle && result.suggestedSubtitle.trim()) person.subtitle = result.suggestedSubtitle.trim();
+
+      let factsAdded = 0, newColsCount = 0, inferencesCount = 0, updatedCount = 0, duplicatesSkipped = 0;
+
+      if (result && Array.isArray(result.updates)) {
+        result.updates.forEach(upd => {
+          if (!upd || !upd.columnTitle || !Array.isArray(upd.facts)) return;
+          const title = String(upd.columnTitle).trim();
+          if (!title) return;
+          let targetCol = person.columns.find(c => c.title.trim().toLowerCase() === title.toLowerCase());
+          let createdNow = false;
+          if (!targetCol) {
+            targetCol = { id: uid("col"), title, icon: upd.icon || "✨", isNew: true, facts: [] };
+            person.columns.push(targetCol);
+            createdNow = true;
+            newColsCount++;
+          }
+          let addedInCol = 0;
+          upd.facts.forEach(rawFactItem => {
+            const factObj = typeof rawFactItem === "string" ? { text: rawFactItem, tag: "fact", reason: "", replacesOldFact: "" } : rawFactItem;
+            const cleanFact = String((factObj && factObj.text) || "").trim();
+            if (!cleanFact) return;
+            const tag = factObj.tag === "ai_inference" || factObj.tag === "updated" ? factObj.tag : "fact";
+            const reasonStr = String(factObj.reason || "").trim();
+            const rel = findFactRelationAcrossPerson(person, cleanFact, factObj.replacesOldFact || "");
+            if (rel.type === "duplicate") { duplicatesSkipped++; return; }
+            if ((rel.type === "contradict" || rel.type === "enrich") && rel.fact) {
+              const oldText = rel.fact.text;
+              if (oldText.trim().toLowerCase() === cleanFact.toLowerCase()) { duplicatesSkipped++; return; }
+              rel.fact.text = cleanFact; rel.fact.isNew = true; rel.fact.tag = "updated"; rel.fact.prevText = oldText;
+              rel.fact.reason = reasonStr || (rel.type === "enrich" ? "Дополнено деталями" : "Обновлено");
+              addedInCol++; factsAdded++; updatedCount++;
+              return;
+            }
+            targetCol.facts.push({ id: uid("fact"), text: cleanFact, isNew: true, tag, reason: reasonStr, prevText: "" });
+            addedInCol++; factsAdded++;
+            if (tag === "ai_inference") inferencesCount++;
+            if (tag === "updated") updatedCount++;
+          });
+          if (createdNow && addedInCol === 0) { person.columns = person.columns.filter(c => c.id !== targetCol.id); newColsCount--; }
+        });
+      }
+
+      const nowIso = new Date().toISOString();
+      if (!(person.rawNotes.length > 0 && person.rawNotes[0].text.trim() === rawText)) {
+        person.rawNotes.unshift({ id: uid("note"), createdAt: nowIso, text: rawText });
+      }
+      person.updatedAt = nowIso;
+      person.lastContactAt = computeLatestContactIso(person);
+
+      state.isAnalyzing = false;
+      state.draftText = "";
+      state.lastReport = {
+        personId: person.id, factsAdded, newColsCount, inferencesCount, updatedCount, duplicatesSkipped,
+        engineName: state.activeEngine === "gemini" ? "Gemini AI" : "Локальный ИИ",
+        fallbackReason, snapshotBefore
+      };
+
+      savePersonToCloud(person);
+      renderAll();
+      if (factsAdded > 0) showToast(`Готово! +${factsAdded} фактов, ${inferencesCount} выводов ИИ`, "success");
+      else showToast(duplicatesSkipped > 0 ? `Дубликаты не добавлены (${duplicatesSkipped})` : "Новых фактов не обнаружено", "info");
+    }
+
+    function undoLastAnalysis() {
+      const rep = state.lastReport;
+      if (!rep || !rep.snapshotBefore) return;
+      const idx = state.people.findIndex(p => p.id === rep.personId);
+      if (idx !== -1) {
+        state.people[idx] = rep.snapshotBefore;
+        savePersonToCloud(state.people[idx]);
+      }
+      state.lastReport = null;
+      renderAll();
+      showToast("Последний разбор отменён", "info");
+    }
+
+    async function askAiAdvisor(questionText) {
+      const person = getActivePerson();
+      const q = String(questionText || state.advisorQuery || "").trim();
+      if (!person || !q || state.isAskingAdvisor) return;
+      state.advisorQuery = q;
+      state.isAskingAdvisor = true;
+      state.advisorAnswer = "";
+      renderMain();
+
+      try {
+        if (!navigator.onLine || !getEffectiveApiKey()) throw new Error("NO_API_KEY");
+        const serialized = { name: person.name, subtitle: person.subtitle, columns: person.columns.map(c => ({ category: c.title, facts: c.facts.map(f => f.text) })) };
+        const res = await callGeminiWithSchema({
+          contents: [{ role: "user", parts: [{ text: `Досье:\n${JSON.stringify(serialized)}\n\nОтветь кратко на вопрос: «${q}»` }] }],
+          generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { answer: { type: "STRING" } }, required: ["answer"] } }
+        }, 14000);
+        state.activeEngine = "gemini";
+        state.advisorAnswer = res.answer || "Не удалось сформировать ответ.";
+      } catch (err) {
+        state.activeEngine = "local";
+        if (err && err.message !== "NO_API_KEY") showToast(formatGeminiFallbackReason(err), "warning");
+        state.advisorAnswer = buildLocalAdvisorAnswer(person, q);
+      }
+      updateEngineBadge();
+      state.isAskingAdvisor = false;
+      renderMain();
+    }
+
+    function buildLocalAdvisorAnswer(person, question) {
+      const lowQ = question.toLowerCase();
+      const allFacts = [], limits = [], gifts = [], likes = [];
+      person.columns.forEach(c => {
+        const lowCol = c.title.toLowerCase();
+        c.facts.forEach(f => {
+          allFacts.push({ col: c.title, text: f.text, reason: f.reason });
+          if (lowCol.includes("аллерг") || lowCol.includes("здоров") || lowCol.includes("не нравится")) limits.push("• [" + c.title + "] " + f.text);
+          else if (lowCol.includes("подар")) gifts.push("• " + f.text + (f.reason ? " (" + f.reason + ")" : ""));
+          else if (lowCol.includes("нравится") || lowCol.includes("еда") || lowCol.includes("увлеч") || lowCol.includes("мечт")) likes.push("• [" + c.title + "] " + f.text);
+        });
+      });
+      if (/подар|подарит|др|сюрприз/i.test(lowQ)) {
+        const out = gifts.length ? "Лучшие идеи подарков для " + person.name + ":\n" + gifts.join("\n") : (likes.length ? "Опирайтесь на интересы:\n" + likes.slice(0, 4).join("\n") : "Пока мало данных об увлечениях.");
+        return limits.length ? out + "\n\n⚠️ Ограничения:\n" + limits.join("\n") : out;
+      }
+      if (/пойти|встреч|кафе|куда/i.test(lowQ)) return "Рекомендации для встречи:\n" + (likes.slice(0, 4).join("\n") || "• Спокойное место без лишнего шума") + (limits.length ? "\n• Избегать:\n" + limits.join("\n") : "");
+      if (/табу|нельзя|аллерг/i.test(lowQ)) return limits.length ? "Ограничения и табу:\n" + limits.join("\n") : "Ограничений и аллергий пока не зафиксировано.";
+      return likes.length ? "Темы для разговора:\n" + likes.slice(0, 5).join("\n") : "Собрано фактов: " + allFacts.length + ".";
+    }
+
+    async function generateAndShowSummary(mode) {
+      state.summaryMode = mode || state.summaryMode;
+      openModal("summaryModal");
+      if (state.isSummarizing) return;
+      state.isSummarizing = true;
+      renderSummaryModal();
+
+      const activePerson = getActivePerson();
+      const targets = state.summaryMode === "all" ? state.people : (activePerson ? [activePerson] : []);
+      let data = null;
+
+      try {
+        if (!navigator.onLine || !getEffectiveApiKey()) throw new Error("NO_API_KEY");
+        const serialized = targets.map(p => ({ name: p.name, subtitle: p.subtitle, columns: p.columns.map(c => ({ category: c.title, facts: c.facts.map(f => f.text) })) }));
+        const prompt = state.summaryMode === "all"
+          ? `Сформируй общую сводку (6 блоков) по базе:\n${JSON.stringify(serialized)}`
+          : `Составь 6-блочное ИИ-досье на "${activePerson ? activePerson.name : ""}":\n${JSON.stringify(serialized)}`;
+        data = await callGeminiWithSchema({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: "OBJECT",
+              properties: {
+                reportTitle: { type: "STRING" }, block1Title: { type: "STRING" }, block1Text: { type: "STRING" },
+                block2Title: { type: "STRING" }, block2Text: { type: "STRING" }, block3Title: { type: "STRING" }, block3Text: { type: "STRING" },
+                block4Title: { type: "STRING" }, block4Text: { type: "STRING" }, block5Title: { type: "STRING" }, block5Text: { type: "STRING" },
+                block6Title: { type: "STRING" }, block6Text: { type: "STRING" }
+              },
+              required: ["reportTitle", "block1Title", "block1Text", "block2Title", "block2Text", "block3Title", "block3Text", "block4Title", "block4Text", "block5Title", "block5Text", "block6Title", "block6Text"]
+            }
+          }
+        }, 18000);
+        state.activeEngine = "gemini";
+      } catch (err) {
+        state.activeEngine = "local";
+        if (err && err.message !== "NO_API_KEY") showToast(formatGeminiFallbackReason(err), "warning");
+        data = buildDossierLocally(state.summaryMode);
+      }
+      updateEngineBadge();
+      data.engineUsed = state.activeEngine === "gemini" ? "⚡ Gemini AI" : "🧠 Локальный ИИ";
+      state.summaryData = data;
+      state.isSummarizing = false;
+      renderSummaryModal();
+    }
+
+    function buildDossierLocally(mode) {
+      const activePerson = getActivePerson();
+      const targets = mode === "all" ? state.people : (activePerson ? [activePerson] : []);
+      if (!targets.length) {
+        return { reportTitle: "Блокнот пока пуст", block1Title: "1. Портрет", block1Text: "Нет вкладок.", block2Title: "2. Точки контакта", block2Text: "—", block3Title: "3. Табу", block3Text: "—", block4Title: "4. Подарки", block4Text: "—", block5Title: "5. Узнать ещё", block5Text: "—", block6Title: "6. Сценарии", block6Text: "—" };
+      }
+      if (mode === "all") {
+        const total = targets.reduce((a, p) => a + p.columns.reduce((s, c) => s + c.facts.length, 0), 0);
+        return {
+          reportTitle: `Общая сводка по всем людям (${targets.length} чел.)`,
+          block1Title: "1. Обзор базы", block1Text: `Собрано ${targets.length} досье и ${total} фактов.`,
+          block2Title: "2. Карточки", block2Text: targets.map(p => `• ${p.name}: ${p.columns.reduce((s, c) => s + c.facts.length, 0)} фактов`).join("\n"),
+          block3Title: "3. Совместные идеи", block3Text: "• Ищите общие хобби для совместных встреч.",
+          block4Title: "4. Ограничения", block4Text: "• Учитывайте аллергии при выборе кафе и подарков.",
+          block5Title: "5. Заполнение", block5Text: "• Регулярно фиксируйте встречи в таймлайне.",
+          block6Title: "6. Рекомендации", block6Text: "• Проверяйте индикаторы «Не общались N дн.» на вкладках."
+        };
+      }
+      const p = targets[0];
+      const likes = [], limits = [], gifts = [];
+      p.columns.forEach(c => {
+        const low = c.title.toLowerCase();
+        c.facts.forEach(f => {
+          if (low.includes("аллерг") || low.includes("не нравится")) limits.push("• " + f.text);
+          else if (low.includes("подар")) gifts.push("• " + f.text);
+          else likes.push("• " + f.text);
+        });
+      });
+      return {
+        reportTitle: "ИИ-Досье: " + p.name,
+        block1Title: "1. Краткий портрет", block1Text: `${p.name}${p.subtitle ? " — " + p.subtitle : ""}. Интересы: ${likes.slice(0, 3).map(x => x.slice(2)).join(", ") || "пока не указаны"}.`,
+        block2Title: "2. Точки контакта", block2Text: likes.slice(0, 4).join("\n") || "• Спросите о текущих планах и увлечениях.",
+        block3Title: "3. Табу и аллергии", block3Text: limits.join("\n") || "• Явных запретов не зафиксировано.",
+        block4Title: "4. Идеи подарков", block4Text: gifts.join("\n") || "• Добавьте факты о хобби и мечтах.",
+        block5Title: "5. Что ещё стоит узнать", block5Text: "• Какие любимые фильмы/книги за последнее время?\n• Куда хочется поехать в отпуск?",
+        block6Title: "6. Готовый заход", block6Text: `• «Привет, ${p.name}! Давно не виделись — как твоя неделя? Пошли выпьем по напитку и пообщаемся!»`
+      };
+    }
+
+    function formatSummaryPlainText(d) {
+      return [d.reportTitle, "", d.block1Title, d.block1Text, "", d.block2Title, d.block2Text, "", d.block3Title, d.block3Text, "", d.block4Title, d.block4Text, "", d.block5Title, d.block5Text, "", d.block6Title, d.block6Text].join("\n");
+    }
+
+    /* ========================================================================
+       РЕНДЕРИНГ: ГРУППЫ, ВКЛАДКИ, НАПОМИНАНИЯ, ФИЛЬТР, КОЛОНКИ И ТАЙМЛАЙН
+       ======================================================================== */
+    function openModal(id) { document.getElementById(id)?.classList.add("open"); }
+    function closeModal(id) { document.getElementById(id)?.classList.remove("open"); }
+    function askConfirm(title, message, onConfirm) {
+      document.getElementById("confirmTitle").textContent = title;
+      document.getElementById("confirmMessage").textContent = message;
+      state.confirmAction = onConfirm;
+      openModal("confirmModal");
+    }
+
+    function renderAll() {
+      renderGroups();
+      renderTabs();
+      renderMain();
+      updateCloudBadge(state.currentUser ? "online" : "error", state.currentUser ? "Синхронизировано" : "Локальный режим");
+    }
+
+    function renderGroups() {
+      const bar = document.getElementById("groupsBar");
+      if (!state.people.length) { bar.classList.add("hidden"); return; }
+      bar.classList.remove("hidden");
+      const custom = Array.from(new Set(state.people.map(p => (p.group || "").trim()).filter(g => g && !DEFAULT_GROUPS.includes(g))));
+      const groups = ["Все", ...DEFAULT_GROUPS, ...custom];
+      bar.innerHTML = `<span class="groups-label">Группы:</span>` + groups.map(grp => {
+        const count = grp === "Все" ? state.people.length : state.people.filter(p => (p.group || "").trim() === grp).length;
+        return `<button type="button" class="group-chip ${state.selectedGroup === grp ? "active" : ""}" data-group="${escapeHtml(grp)}">${escapeHtml(grp)} <span class="tabular-nums">(${count})</span></button>`;
+      }).join("");
+    }
+
+    function countPersonMatches(person, query) {
+      if (!query) return 0;
+      let matches = 0;
+      if (person.name.toLowerCase().includes(query) || (person.subtitle && person.subtitle.toLowerCase().includes(query))) matches++;
+      person.columns.forEach(col => {
+        if (col.title.toLowerCase().includes(query)) matches++;
+        col.facts.forEach(f => { if (f.text.toLowerCase().includes(query)) matches++; });
+      });
+      return matches;
+    }
+
+    function renderTabs() {
+      const list = document.getElementById("tabsList");
+      list.innerHTML = "";
+      const query = state.searchQuery.trim().toLowerCase();
+
+      const sorted = [...state.people].sort((a, b) => (Boolean(a.isPinned) === Boolean(b.isPinned) ? 0 : a.isPinned ? -1 : 1));
+      sorted.forEach(person => {
+        if (state.selectedGroup !== "Все" && (person.group || "").trim() !== state.selectedGroup) return;
+        const isActive = person.id === state.activePersonId;
+        const matchCount = query ? countPersonMatches(person, query) : 0;
+        if (query && !isActive && matchCount === 0) return;
+
+        const totalFacts = person.columns.reduce((sum, c) => sum + c.facts.length, 0);
+        const daysSince = getDaysSinceLastContact(person);
+        const threshold = person.contactIntervalDays ?? 30;
+        const isOverdue = threshold > 0 && daysSince >= threshold;
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "person-tab" + (isActive ? " active" : "");
+        btn.dataset.action = "select-person";
+        btn.dataset.personId = person.id;
+        btn.innerHTML =
+          (person.isPinned ? `<span title="Закреплено">⭐</span>` : "") +
+          `<span class="avatar-circle" style="background:${getAvatarGradient(person.colorId)}">${escapeHtml(getInitials(person.name))}</span>` +
+          `<span>${escapeHtml(person.name)}</span>` +
+          `<span class="tab-count tabular-nums">${totalFacts}</span>` +
+          (isOverdue ? `<span class="tab-inactive-badge tabular-nums" title="Не общались ${daysSince} дн.">⏳ ${daysSince}д</span>` : "") +
+          (query && matchCount > 0 ? `<span class="tab-match-badge tabular-nums">🔍 ${matchCount}</span>` : "");
+        list.appendChild(btn);
+      });
+    }
+
+    function renderMain() {
+      const main = document.getElementById("mainArea");
+      const reminders = getUpcomingReminders(state.people, 30);
+      const remindersHtml = reminders.length ? `
+        <section class="reminders-card">
+          <div class="reminders-title">📅 Напоминания о важных датах (ближайшие 30 дней)</div>
+          <div class="reminders-list">
+            ${reminders.slice(0, 4).map(r => {
+              const whenLabel = r.daysUntil === 0 ? "Сегодня" : r.daysUntil === 1 ? "Завтра" : "Через " + formatDaysRussian(r.daysUntil);
+              return `<button type="button" class="reminder-btn" data-action="select-person" data-person-id="${escapeHtml(r.personId)}">
+                <span>${r.isBirthday ? "🎂" : "📅"}</span>
+                <span><strong>${escapeHtml(whenLabel)}</strong> (${escapeHtml(r.formattedDate)}) ${r.isBirthday ? "— ДР: " + escapeHtml(r.personName) + " · загляни в идеи подарков" : "— " + escapeHtml(r.personName) + ": " + escapeHtml(r.factText)}</span>
+              </button>`;
+            }).join("")}
+          </div>
+        </section>` : "";
+
+      const person = getActivePerson();
+      if (!person) {
+        main.innerHTML = remindersHtml + `
+          <div class="empty-state">
+            <div style="font-size: 40px; margin-bottom: 12px;">📒</div>
+            <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 8px;">В вашем блокноте пока нет вкладок</h2>
+            <p style="font-size: 14px; color: var(--text-secondary); max-width: 440px; margin: 0 auto 20px auto;">
+              Создайте вкладку с именем человека, а затем вставляйте любые заметки о нём — ИИ сам разложит факты без дублей и создаст колонки.
+            </p>
+            <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+              <button class="btn btn-primary" type="button" data-action="open-add-person">+ Добавить человека</button>
+              <button class="btn btn-secondary" type="button" data-action="restore-sample">Загрузить пример (Алина)</button>
+            </div>
+          </div>`;
+        return;
+      }
+
+      const totalFacts = person.columns.reduce((s, c) => s + c.facts.length, 0);
+      const query = state.searchQuery.trim().toLowerCase();
+      const filteredColumns = person.columns.map(col => {
+        if (!query || col.title.toLowerCase().includes(query)) return col;
+        const matchingFacts = col.facts.filter(f => f.text.toLowerCase().includes(query));
+        return matchingFacts.length ? Object.assign({}, col, { facts: matchingFacts }) : null;
+      }).filter(Boolean);
+
+      const daysSince = getDaysSinceLastContact(person);
+      const threshold = person.contactIntervalDays ?? 30;
+      const isOverdue = threshold > 0 && daysSince >= threshold;
+      const meetings = person.meetings || [];
+      const report = state.lastReport && state.lastReport.personId === person.id ? state.lastReport : null;
+
+      main.innerHTML = remindersHtml + `
+        <section class="profile-card">
+          <div class="profile-top">
+            <div class="profile-info">
+              <div class="profile-avatar-lg" style="background:${getAvatarGradient(person.colorId)}">${escapeHtml(getInitials(person.name))}</div>
+              <div style="min-width:0;flex:1;">
+                <div class="profile-name-row">
+                  <h1 class="profile-name" data-action="rename-person">${escapeHtml(person.name)}</h1>
+                  <button class="icon-btn-sm" type="button" data-action="rename-person" title="Переименовать">✏️</button>
+                  <button class="pin-btn ${person.isPinned ? "pinned" : ""}" type="button" data-action="toggle-pin">
+                    ${person.isPinned ? "⭐ Закреплено" : "☆ Закрепить"}
+                  </button>
+                </div>
+                <p class="profile-subtitle" data-action="edit-subtitle">${escapeHtml(person.subtitle || "Нажмите, чтобы добавить краткое описание...")}</p>
+              </div>
+            </div>
+            <div class="profile-actions">
+              <button class="btn btn-primary" type="button" data-action="collect-all-summary">📋 Собрать все данные (ИИ)</button>
+              <button class="btn btn-secondary" type="button" data-action="open-add-meeting">📅 Записать встречу / звонок</button>
+              <button class="btn btn-secondary" type="button" data-action="open-add-column">+ Колонка</button>
+              <button class="btn btn-secondary" type="button" data-action="deduplicate-person">🧹 Убрать дубли</button>
+              <button class="btn btn-danger-ghost" type="button" data-action="delete-person">🗑️ Удалить вкладку</button>
+            </div>
+          </div>
+
+          <div class="profile-meta-strip">
+            <span class="tabular-nums">Категорий: <strong>${person.columns.length}</strong></span>
+            <span>·</span>
+            <span class="tabular-nums">Фактов: <strong>${totalFacts}</strong></span>
+            <span>·</span>
+            <span>Обновлено: ${escapeHtml(formatDateTime(person.updatedAt))}</span>
+            <span>·</span>
+            <label>Группа:
+              <select id="profileGroupSelect" class="meta-select">
+                <option value="" ${!person.group ? "selected" : ""}>Без группы</option>
+                ${DEFAULT_GROUPS.map(g => `<option value="${g}" ${person.group === g ? "selected" : ""}>${g}</option>`).join("")}
+              </select>
+            </label>
+            <span>·</span>
+            <label>Трекер общения:
+              <select id="profileIntervalSelect" class="meta-select">
+                <option value="14" ${threshold === 14 ? "selected" : ""}>Раз в 14 дн.</option>
+                <option value="30" ${threshold === 30 ? "selected" : ""}>Раз в 30 дн.</option>
+                <option value="60" ${threshold === 60 ? "selected" : ""}>Раз в 60 дн.</option>
+                <option value="0" ${threshold === 0 ? "selected" : ""}>Выкл</option>
+              </select>
+            </label>
+            ${isOverdue ? `<span class="tab-inactive-badge tabular-nums">⏳ Не общались ${escapeHtml(formatDaysRussian(daysSince))}</span>` : ""}
+          </div>
+        </section>
+
+        <section class="analyzer-card">
+          <div class="analyzer-header">
+            <div class="analyzer-title-wrap">
+              <div class="analyzer-icon">✨</div>
+              <div>
+                <h2 class="analyzer-title">Умный анализатор текста</h2>
+                <p class="analyzer-desc">Дистиллирует атомарные факты, блокирует дубликаты, делает выводы ИИ и отслеживает изменения</p>
+              </div>
+            </div>
+            <button class="sample-fill-btn" type="button" data-action="fill-demo-text">✨ Вставить пример заметки</button>
+          </div>
+          <textarea id="analyzerTextarea" class="analyzer-textarea" ${state.isAnalyzing ? "disabled" : ""} placeholder="Вставьте заметку о ${escapeHtml(person.name)}...">${escapeHtml(state.draftText)}</textarea>
+          <div class="analyzer-footer">
+            <span class="shortcut-hint">Быстрый запуск: <span class="kbd">Ctrl</span> + <span class="kbd">Enter</span></span>
+            <div class="analyzer-buttons">
+              ${state.draftText ? `<button class="btn btn-secondary" type="button" data-action="clear-draft">Очистить</button>` : ""}
+              <button class="btn btn-primary" type="button" data-action="analyze-text" ${state.isAnalyzing ? "disabled" : ""}>
+                ${state.isAnalyzing ? `<span class="spinner"></span><span>ИИ анализирует...</span>` : `✨ Анализировать и разложить`}
+              </button>
+            </div>
+          </div>
+          ${report ? `
+            <div class="report-banner">
+              <div class="report-pills">
+                <span>✅ Готово (${escapeHtml(report.engineName)}):</span>
+                <span class="report-pill">+${report.factsAdded} фактов</span>
+                <span class="report-pill">📁 ${report.newColsCount} новых колонок</span>
+                <span class="report-pill">💡 ${report.inferencesCount} выводов ИИ</span>
+                <span class="report-pill">🔄 ${report.updatedCount} обновлений</span>
+                ${report.duplicatesSkipped > 0 ? `<span class="report-pill">🛡️ ${report.duplicatesSkipped} дублей отсеяно</span>` : ""}
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                ${report.factsAdded > 0 ? `<button class="undo-btn" type="button" data-action="undo-analysis">↩ Отменить разбор</button>` : ""}
+                <button type="button" data-action="dismiss-report" style="font-size:16px;">&times;</button>
+              </div>
+            </div>` : ""}
+          <div class="advisor-bar">
+            <div class="advisor-chips">
+              <span class="advisor-label">🤖 Спросить ИИ о ${escapeHtml(person.name)}:</span>
+              <button class="advisor-chip" type="button" data-action="advisor-preset" data-question="Что подарить?">🎁 Что подарить?</button>
+              <button class="advisor-chip" type="button" data-action="advisor-preset" data-question="Куда позвать на встречу?">☕ Куда позвать?</button>
+              <button class="advisor-chip" type="button" data-action="advisor-preset" data-question="О чём поговорить при встрече?">💬 О чём поговорить?</button>
+              <button class="advisor-chip" type="button" data-action="advisor-preset" data-question="Какие есть табу и аллергии?">⚠️ Табу и аллергии</button>
+            </div>
+            <form class="advisor-form" data-action="advisor-submit">
+              <input id="advisorInput" class="advisor-input" type="text" value="${escapeHtml(state.advisorQuery)}" ${state.isAskingAdvisor ? "disabled" : ""} placeholder="Задайте вопрос по досье..." />
+              <button class="btn btn-secondary" type="submit" ${state.isAskingAdvisor ? "disabled" : ""}>${state.isAskingAdvisor ? "Думаю..." : "Спросить ИИ"}</button>
+            </form>
+            ${state.advisorAnswer ? `
+              <div class="advisor-answer">
+                <div class="advisor-answer-header">
+                  <span>🤖 Ответ ИИ-советника по досье «${escapeHtml(person.name)}»</span>
+                  <button type="button" data-action="dismiss-advisor" style="font-size:15px;">&times;</button>
+                </div>
+                <div>${escapeHtml(state.advisorAnswer)}</div>
+              </div>` : ""}
+          </div>
+        </section>
+
+        ${query ? `
+          <div class="filter-active-banner">
+            <span>🔍 Активен фильтр: <strong>«${escapeHtml(state.searchQuery)}»</strong> · показано колонок: <strong class="tabular-nums">${filteredColumns.length} из ${person.columns.length}</strong></span>
+            <button class="filter-reset-btn" type="button" data-action="reset-search-filter">✕ Сбросить фильтр</button>
+          </div>` : ""}
+
+        <section>
+          ${filteredColumns.length === 0 ? `
+            <div class="empty-state" style="padding:36px 20px;">
+              <p style="color:var(--text-secondary);font-size:14px;">
+                ${query ? `По запросу «${escapeHtml(state.searchQuery)}» совпадений не найдено.` : "Пока нет колонок. Добавьте текст выше или создайте колонку вручную."}
+              </p>
+            </div>` : `
+            <div class="columns-grid">${filteredColumns.map(renderColumnCard).join("")}</div>`}
+        </section>
+
+        <section class="history-card">
+          <div class="history-header-row">
+            <button class="history-toggle" type="button" data-action="toggle-timeline">
+              <span>📅 Таймлайн общения и встреч (${meetings.length}) · Последний контакт: ${daysSince === 0 ? "сегодня" : escapeHtml(formatDaysRussian(daysSince)) + " назад"}</span>
+              <span>${state.timelineOpen ? "▲" : "▼"}</span>
+            </button>
+            <button class="btn btn-secondary" type="button" data-action="open-add-meeting" style="padding:6px 11px;font-size:12px;">+ Записать встречу / звонок</button>
+          </div>
+          ${state.timelineOpen ? `
+            <div class="history-body">
+              ${meetings.length === 0 ? `<p style="font-size:13px;color:var(--text-muted);">Пока нет записанных встреч или звонков.</p>` :
+                meetings.map(m => {
+                  const icon = m.type === "call" ? "📞 Звонок" : m.type === "message" ? "💬 Переписка" : m.type === "other" ? "📌 Событие" : "☕ Встреча";
+                  return `<div class="meeting-row">
+                    <div>
+                      <div style="font-size:12px;color:var(--text-muted);margin-bottom:3px;"><strong style="color:var(--text-primary);">${escapeHtml(formatShortDate(m.date))}</strong> · ${icon}</div>
+                      <div style="color:var(--text-secondary);">${escapeHtml(m.summary)}</div>
+                    </div>
+                    <button type="button" data-action="delete-meeting" data-meeting-id="${escapeHtml(m.id)}" style="color:var(--danger-text);font-size:12px;">Удалить</button>
+                  </div>`;
+                }).join("")}
+            </div>` : ""}
+        </section>
+
+        <section class="history-card">
+          <div class="history-header-row">
+            <button class="history-toggle" type="button" data-action="toggle-history" style="width:100%;justify-content:space-between;">
+              <span>🕒 История исходных заметок (${person.rawNotes.length})</span>
+              <span>${state.historyOpen ? "▲" : "▼"}</span>
+            </button>
+          </div>
+          ${state.historyOpen ? `
+            <div class="history-body">
+              ${person.rawNotes.length === 0 ? `<p style="font-size:13px;color:var(--text-muted);">Здесь сохраняются все тексты, которые вы вставляли для анализа.</p>` :
+                person.rawNotes.map(note => `
+                  <div class="history-note">
+                    <div class="history-note-meta">
+                      <span>Добавлено: ${escapeHtml(formatDateTime(note.createdAt))}</span>
+                      <div style="display:flex;gap:10px;">
+                        <button type="button" data-action="copy-note" data-note-id="${escapeHtml(note.id)}">Копировать</button>
+                        <button type="button" data-action="delete-note" data-note-id="${escapeHtml(note.id)}" style="color:var(--danger-text);">Удалить</button>
+                      </div>
+                    </div>
+                    <div class="history-note-text">${escapeHtml(note.text)}</div>
+                  </div>`).join("")}
+            </div>` : ""}
+        </section>
+      `;
+
+      const ta = document.getElementById("analyzerTextarea");
+      if (ta) {
+        ta.addEventListener("input", e => { state.draftText = e.target.value; });
+        ta.addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); runTextAnalysis(); } });
+      }
+      const advIn = document.getElementById("advisorInput");
+      if (advIn) advIn.addEventListener("input", e => { state.advisorQuery = e.target.value; });
+
+      document.getElementById("profileGroupSelect")?.addEventListener("change", e => {
+        person.group = e.target.value;
+        person.updatedAt = new Date().toISOString();
+        savePersonToCloud(person);
+        renderAll();
+      });
+      document.getElementById("profileIntervalSelect")?.addEventListener("change", e => {
+        person.contactIntervalDays = Number(e.target.value);
+        person.updatedAt = new Date().toISOString();
+        savePersonToCloud(person);
+        renderAll();
+      });
+    }
+
+    function renderColumnCard(col) {
+      return `
+        <article class="column-card ${col.isNew ? "is-new" : ""}">
+          <div class="column-header">
+            <div class="column-title-group">
+              <span class="column-icon">${escapeHtml(col.icon || "📌")}</span>
+              <h3 class="column-title" data-action="rename-column" data-col-id="${escapeHtml(col.id)}">${escapeHtml(col.title)}</h3>
+              <span class="column-count tabular-nums">${col.facts.length}</span>
+              ${col.isNew ? `<span class="badge-new">Новое</span>` : ""}
+            </div>
+            <button class="icon-btn-sm" type="button" data-action="delete-column" data-col-id="${escapeHtml(col.id)}" title="Удалить колонку">&times;</button>
+          </div>
+          <ul class="facts-list">
+            ${col.facts.length === 0 ? `<li class="empty-col-text">Пока нет записей в этой колонке</li>` : col.facts.map(fact => {
+              const isInf = fact.tag === "ai_inference", isUpd = fact.tag === "updated";
+              const cls = isInf ? "is-inference" : isUpd ? "is-updated" : (fact.isNew ? "is-new" : "");
+              const badge = isInf ? `<span class="badge-inference">💡 вывод ИИ</span>` : isUpd ? `<span class="badge-updated">🔄 обновлено</span>` : (fact.isNew ? `<span class="badge-new-fact">Новое</span>` : "");
+              return `
+                <li class="fact-item ${cls}">
+                  <div class="fact-content">
+                    <span class="fact-dot"></span>
+                    <div class="fact-text-wrap">
+                      <span class="fact-text" data-action="edit-fact" data-col-id="${escapeHtml(col.id)}" data-fact-id="${escapeHtml(fact.id)}">${escapeHtml(fact.text)}</span>
+                      ${fact.prevText ? `<span class="fact-subnote">Было: ${escapeHtml(fact.prevText)}</span>` : ""}
+                      ${fact.reason ? `<span class="fact-subnote">↳ ${escapeHtml(fact.reason)}</span>` : ""}
+                    </div>
+                  </div>
+                  <div class="fact-actions">
+                    ${badge}
+                    <button class="fact-delete-btn" type="button" data-action="delete-fact" data-col-id="${escapeHtml(col.id)}" data-fact-id="${escapeHtml(fact.id)}">&times;</button>
+                  </div>
+                </li>`;
+            }).join("")}
+          </ul>
+          <form class="quick-add-form" data-action="quick-add-fact" data-col-id="${escapeHtml(col.id)}">
+            <input class="quick-add-input" type="text" placeholder="+ Добавить факт вручную..." />
+            <button class="quick-add-submit" type="submit">+</button>
+          </form>
+        </article>`;
+    }
+
+    function renderSummaryModal() {
+      const singleBtn = document.getElementById("summaryTabSingle");
+      const allBtn = document.getElementById("summaryTabAll");
+      const body = document.getElementById("summaryBody");
+      const subtitle = document.getElementById("summaryEngineSubtitle");
+      const activePerson = getActivePerson();
+      singleBtn.textContent = activePerson ? `По выбранному человеку (${activePerson.name})` : "По выбранному человеку";
+      singleBtn.classList.toggle("active", state.summaryMode === "single");
+      allBtn.classList.toggle("active", state.summaryMode === "all");
+
+      if (state.isSummarizing) {
+        subtitle.textContent = "ИИ синтезирует портрет...";
+        body.innerHTML = `<div style="padding:48px 16px;text-align:center;"><span class="spinner spinner-lg"></span><div style="margin-top:12px;font-weight:700;">Собираю ИИ-досье...</div></div>`;
+        return;
+      }
+      const d = state.summaryData;
+      if (!d) return;
+      subtitle.textContent = "Движок синтеза: " + (d.engineUsed || "Умный ИИ");
+      const blocks = [
+        { icon: "🧠", title: d.block1Title, text: d.block1Text },
+        { icon: "🤝", title: d.block2Title, text: d.block2Text },
+        { icon: "🚫", title: d.block3Title, text: d.block3Text },
+        { icon: "🎁", title: d.block4Title, text: d.block4Text },
+        { icon: "❓", title: d.block5Title, text: d.block5Text },
+        { icon: "💬", title: d.block6Title, text: d.block6Text }
+      ].filter(b => b.title && b.text);
+      body.innerHTML = `<h3 style="font-size:18px;font-weight:700;">${escapeHtml(d.reportTitle)}</h3>` +
+        blocks.map(b => `<div class="summary-section"><div class="summary-section-title"><span>${b.icon}</span><span>${escapeHtml(b.title)}</span></div><div class="summary-section-text">${escapeHtml(b.text)}</div></div>`).join("");
+    }
+
+    function startInlineEdit(targetEl, initialValue, onCommit) {
+      if (!targetEl || targetEl.dataset.editing === "1") return;
+      targetEl.dataset.editing = "1";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "inline-edit-input";
+      input.value = initialValue;
+      targetEl.replaceWith(input);
+      input.focus();
+      input.select();
+      let finished = false;
+      function finish(save) {
+        if (finished) return;
+        finished = true;
+        if (save) onCommit(input.value.trim());
+        else renderAll();
+      }
+      input.addEventListener("blur", () => finish(true));
+      input.addEventListener("keydown", e => {
+        if (e.key === "Enter") { e.preventDefault(); finish(true); }
+        else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+      });
+    }
+
+    function renderColorSwatches() {
+      document.getElementById("colorSwatches").innerHTML = AVATAR_COLORS.map(c =>
+        `<button type="button" class="color-swatch ${state.selectedColorId === c.id ? "selected" : ""}" data-color-id="${c.id}" style="background:${c.bg};"></button>`
+      ).join("");
+    }
+
+    function setupEventListeners() {
+      document.getElementById("authTabLogin").addEventListener("click", () => setAuthMode("login"));
+      document.getElementById("authTabRegister").addEventListener("click", () => setAuthMode("register"));
+      document.getElementById("forgotPasswordOpenBtn").addEventListener("click", () => setAuthMode("forgot"));
+      document.getElementById("forgotBackBtn").addEventListener("click", () => setAuthMode("login"));
+
+      document.getElementById("togglePasswordBtn").addEventListener("click", () => {
+        const inp = document.getElementById("authPasswordInput");
+        setPasswordVisibility(inp.type === "password");
+        inp.focus();
+      });
+
+      document.getElementById("forgotForm").addEventListener("submit", async e => {
+        e.preventDefault();
+        const errBox = document.getElementById("authErrorBox");
+        const okBox = document.getElementById("authSuccessBox");
+        const btn = document.getElementById("forgotSubmitBtn");
+        const email = document.getElementById("resetEmailInput").value.trim().toLowerCase();
+        errBox.classList.add("hidden");
+        okBox.classList.add("hidden");
+        if (!email.includes("@") || isSyntheticLoginEmail(email)) {
+          errBox.textContent = "Введите реальный Email, привязанный к аккаунту (короткий логин без почты не принимает письма).";
+          errBox.classList.remove("hidden");
+          return;
+        }
+        btn.disabled = true;
+        btn.textContent = "Отправка письма...";
+        try {
+          auth.languageCode = "ru";
+          await sendPasswordResetEmail(auth, email);
+          okBox.textContent = "Письмо со ссылкой для сброса пароля отправлено на " + email + ". Проверьте входящие и папку «Спам».";
+          okBox.classList.remove("hidden");
+          showToast("Письмо для сброса пароля отправлено", "success");
+        } catch (err) {
+          errBox.textContent = getHumanFirebaseAuthError(err);
+          errBox.classList.remove("hidden");
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "🔑 Отправить ссылку для сброса";
+        }
+      });
+
+      document.getElementById("authForm").addEventListener("submit", async e => {
+        e.preventDefault();
+        if (state.authSubmitting || !auth) return;
+        const rawLogin = document.getElementById("authLoginInput").value.trim();
+        const password = document.getElementById("authPasswordInput").value;
+        const displayName = document.getElementById("authDisplayNameInput").value.trim();
+        const submitBtn = document.getElementById("authSubmitBtn");
+        const errBox = document.getElementById("authErrorBox");
+        const email = normalizeLoginToEmail(rawLogin);
+        if (!email || !password) return;
+
+        state.authSubmitting = true;
+        errBox.classList.add("hidden");
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<span class="spinner"></span><span>${state.authMode === "register" ? "Создаём..." : "Входим..."}</span>`;
+        try {
+          if (state.authMode === "register") {
+            const cred = await createUserWithEmailAndPassword(auth, email, password);
+            const finalName = displayName || (rawLogin.includes("@") ? rawLogin.split("@")[0] : rawLogin);
+            if (cred.user && finalName) await updateProfile(cred.user, { displayName: finalName }).catch(() => {});
+            showToast(`Аккаунт «${finalName}» создан!`, "success");
+          } else {
+            await signInWithEmailAndPassword(auth, email, password);
+            showToast("Добро пожаловать в ваш блокнот!", "success");
+          }
+          state.isGuestMode = false;
+          document.getElementById("authPasswordInput").value = "";
+        } catch (err) {
+          errBox.textContent = getHumanFirebaseAuthError(err);
+          errBox.classList.remove("hidden");
+        } finally {
+          state.authSubmitting = false;
+          submitBtn.disabled = false;
+          submitBtn.textContent = state.authMode === "register" ? "Создать мой аккаунт" : "Войти в мой блокнот";
+        }
+      });
+
+      document.getElementById("continueGuestBtn").addEventListener("click", () => {
+        state.isGuestMode = true;
+        state.currentUser = null;
+        connectUserCloudDatabase(null);
+        showToast("Открыт локальный блокнот", "info");
+      });
+
+      document.getElementById("manualSyncHeaderBtn").addEventListener("click", manualSyncNow);
+      document.getElementById("accountBadgeBtn").addEventListener("click", openAccountModal);
+
+      document.getElementById("logoutBtn").addEventListener("click", async () => {
+        closeModal("accountModal");
+        if (state.currentUser && auth) {
+          await signOut(auth).catch(() => {});
+          showToast("Вы вышли из аккаунта", "info");
+        } else {
+          state.isGuestMode = false;
+          showAuthScreen();
+        }
+      });
+
+      document.getElementById("groupsBar").addEventListener("click", e => {
+        const chip = e.target.closest("[data-group]");
+        if (!chip) return;
+        state.selectedGroup = chip.dataset.group;
+        renderAll();
+      });
+
+      document.getElementById("tabsList").addEventListener("click", e => {
+        const btn = e.target.closest("[data-action='select-person']");
+        if (!btn) return;
+        const id = btn.dataset.personId;
+        if (id && id !== state.activePersonId) {
+          state.activePersonId = id;
+          state.draftText = ""; state.lastReport = null; state.advisorQuery = ""; state.advisorAnswer = "";
+          safeStorage.setItem(STORAGE_TAB_PREFIX + getCurrentStorageScope(), id);
+          renderAll();
+        }
+      });
+
+      document.getElementById("mainArea").addEventListener("click", e => {
+        const el = e.target.closest("[data-action]");
+        if (!el) return;
+        const action = el.dataset.action;
+
+        if (action === "select-person") {
+          const pid = el.dataset.personId;
+          if (pid && pid !== state.activePersonId) {
+            state.activePersonId = pid;
+            safeStorage.setItem(STORAGE_TAB_PREFIX + getCurrentStorageScope(), pid);
+            renderAll();
+          }
+          return;
+        }
+        if (action === "open-add-person") {
+          document.getElementById("newPersonNameInput").value = "";
+          document.getElementById("newPersonNoteInput").value = "";
+          renderColorSwatches();
+          openModal("addPersonModal");
+          return;
+        }
+        if (action === "restore-sample") {
+          const sample = createDefaultSampleState();
+          state.people = sample.people;
+          state.activePersonId = sample.activePersonId;
+          savePersonToCloud(sample.people[0]);
+          renderAll();
+          return;
+        }
+        if (action === "reset-search-filter") {
+          clearSearchFilter();
+          renderAll();
+          return;
+        }
+
+        const person = getActivePerson();
+        if (!person) return;
+
+        if (action === "toggle-pin") {
+          person.isPinned = !person.isPinned;
+          person.updatedAt = new Date().toISOString();
+          savePersonToCloud(person);
+          renderAll();
+        } else if (action === "rename-person") {
+          startInlineEdit(document.querySelector(".profile-name"), person.name, val => {
+            if (val) { person.name = val; person.updatedAt = new Date().toISOString(); savePersonToCloud(person); }
+            renderAll();
+          });
+        } else if (action === "edit-subtitle") {
+          startInlineEdit(document.querySelector(".profile-subtitle"), person.subtitle || "", val => {
+            person.subtitle = val; person.updatedAt = new Date().toISOString(); savePersonToCloud(person); renderMain();
+          });
+        } else if (action === "collect-all-summary") {
+          generateAndShowSummary("single");
+        } else if (action === "open-add-column") {
+          document.getElementById("newColumnTitleInput").value = "";
+          openModal("addColumnModal");
+        } else if (action === "open-add-meeting") {
+          document.getElementById("addMeetingTitle").textContent = "Записать контакт: " + person.name;
+          document.getElementById("meetingDateInput").value = getTodayInputDate();
+          document.getElementById("meetingSummaryInput").value = "";
+          openModal("addMeetingModal");
+        } else if (action === "deduplicate-person") {
+          const removed = deduplicatePersonFacts(person);
+          if (removed > 0) {
+            person.updatedAt = new Date().toISOString();
+            savePersonToCloud(person);
+            renderAll();
+            showToast("Очищено дублей: " + removed, "success");
+          } else showToast("Дубликатов не найдено", "info");
+        } else if (action === "delete-person") {
+          askConfirm(`Удалить вкладку «${person.name}»?`, "Все данные этого человека будут удалены.", () => {
+            state.people = state.people.filter(p => p.id !== person.id);
+            state.activePersonId = state.people[0] ? state.people[0].id : null;
+            deletePersonFromCloud(person.id);
+            renderAll();
+          });
+        } else if (action === "fill-demo-text") {
+          state.draftText = DEMO_SAMPLE_TEXT; renderMain();
+        } else if (action === "clear-draft") {
+          state.draftText = ""; renderMain();
+        } else if (action === "analyze-text") {
+          runTextAnalysis();
+        } else if (action === "undo-analysis") {
+          undoLastAnalysis();
+        } else if (action === "dismiss-report") {
+          state.lastReport = null; renderMain();
+        } else if (action === "advisor-preset") {
+          askAiAdvisor(el.dataset.question || "");
+        } else if (action === "dismiss-advisor") {
+          state.advisorAnswer = ""; renderMain();
+        } else if (action === "rename-column") {
+          const col = person.columns.find(c => c.id === el.dataset.colId);
+          if (col) startInlineEdit(el, col.title, val => { if (val) { col.title = val; savePersonToCloud(person); } renderMain(); });
+        } else if (action === "delete-column") {
+          const col = person.columns.find(c => c.id === el.dataset.colId);
+          if (col) askConfirm(`Удалить колонку «${col.title}»?`, `Записей: ${col.facts.length}`, () => {
+            person.columns = person.columns.filter(c => c.id !== col.id);
+            savePersonToCloud(person);
+            renderAll();
+          });
+        } else if (action === "edit-fact") {
+          const col = person.columns.find(c => c.id === el.dataset.colId);
+          const fact = col ? col.facts.find(f => f.id === el.dataset.factId) : null;
+          if (fact) startInlineEdit(el, fact.text, val => {
+            if (!val) col.facts = col.facts.filter(f => f.id !== fact.id);
+            else { fact.text = val; fact.isNew = false; }
+            person.updatedAt = new Date().toISOString();
+            savePersonToCloud(person);
+            renderAll();
+          });
+        } else if (action === "delete-fact") {
+          const col = person.columns.find(c => c.id === el.dataset.colId);
+          if (col) {
+            col.facts = col.facts.filter(f => f.id !== el.dataset.factId);
+            person.updatedAt = new Date().toISOString();
+            savePersonToCloud(person);
+            renderAll();
+          }
+        } else if (action === "toggle-timeline") {
+          state.timelineOpen = !state.timelineOpen; renderMain();
+        } else if (action === "delete-meeting") {
+          person.meetings = (person.meetings || []).filter(m => m.id !== el.dataset.meetingId);
+          person.lastContactAt = computeLatestContactIso(person);
+          savePersonToCloud(person);
+          renderAll();
+        } else if (action === "toggle-history") {
+          state.historyOpen = !state.historyOpen; renderMain();
+        } else if (action === "copy-note") {
+          const note = person.rawNotes.find(n => n.id === el.dataset.noteId);
+          if (note) copyToClipboard(note.text);
+        } else if (action === "delete-note") {
+          person.rawNotes = person.rawNotes.filter(n => n.id !== el.dataset.noteId);
+          savePersonToCloud(person);
+          renderMain();
+        }
+      });
+
+      document.getElementById("mainArea").addEventListener("submit", e => {
+        const advForm = e.target.closest("[data-action='advisor-submit']");
+        if (advForm) { e.preventDefault(); askAiAdvisor(state.advisorQuery); return; }
+        const form = e.target.closest("[data-action='quick-add-fact']");
+        if (!form) return;
+        e.preventDefault();
+        const person = getActivePerson();
+        const col = person ? person.columns.find(c => c.id === form.dataset.colId) : null;
+        const val = form.querySelector("input")?.value.trim();
+        if (!col || !val) return;
+        const rel = findFactRelationAcrossPerson(person, val, "");
+        if (rel.type === "duplicate" || rel.type === "enrich") { showToast(`Похожий факт уже есть в «${rel.col.title}»`, "warning"); return; }
+        col.facts.push({ id: uid("fact"), text: val, isNew: false, tag: "fact", reason: "", prevText: "" });
+        person.updatedAt = new Date().toISOString();
+        savePersonToCloud(person);
+        renderAll();
+      });
+
+      document.getElementById("openAddPersonBtn").addEventListener("click", () => {
+        document.getElementById("newPersonNameInput").value = "";
+        document.getElementById("newPersonNoteInput").value = "";
+        renderColorSwatches();
+        openModal("addPersonModal");
+      });
+
+      document.getElementById("addPersonForm").addEventListener("submit", e => {
+        e.preventDefault();
+        const name = document.getElementById("newPersonNameInput").value.trim();
+        const note = document.getElementById("newPersonNoteInput").value.trim();
+        const group = document.getElementById("newPersonGroupSelect").value;
+        if (!name) return;
+        const nowIso = new Date().toISOString();
+        const newPerson = {
+          id: uid("person"), name, subtitle: note || "Личная карточка", colorId: state.selectedColorId,
+          isPinned: false, group, contactIntervalDays: 30, updatedAt: nowIso, lastContactAt: nowIso,
+          columns: [
+            { id: uid("col"), title: "Нравится", icon: "❤️", isNew: false, facts: [] },
+            { id: uid("col"), title: "Не нравится", icon: "👎", isNew: false, facts: [] },
+            { id: uid("col"), title: "Увлечения", icon: "🎯", isNew: false, facts: [] }
+          ],
+          rawNotes: [], meetings: []
+        };
+        state.people.push(newPerson);
+        state.activePersonId = newPerson.id;
+        savePersonToCloud(newPerson);
+        closeModal("addPersonModal");
+        renderAll();
+        showToast(`Вкладка «${name}» создана`, "success");
+      });
+
+      document.getElementById("colorSwatches").addEventListener("click", e => {
+        const swatch = e.target.closest("[data-color-id]");
+        if (swatch) { state.selectedColorId = swatch.dataset.colorId; renderColorSwatches(); }
+      });
+
+      document.getElementById("addColumnForm").addEventListener("submit", e => {
+        e.preventDefault();
+        const person = getActivePerson();
+        if (!person) return;
+        const title = document.getElementById("newColumnTitleInput").value.trim();
+        const icon = document.getElementById("newColumnIconInput").value.trim() || "📌";
+        if (!title || person.columns.some(c => c.title.toLowerCase() === title.toLowerCase())) return;
+        person.columns.push({ id: uid("col"), title, icon, isNew: true, facts: [] });
+        person.updatedAt = new Date().toISOString();
+        savePersonToCloud(person);
+        closeModal("addColumnModal");
+        renderMain();
+      });
+
+      document.getElementById("addMeetingForm").addEventListener("submit", e => {
+        e.preventDefault();
+        const person = getActivePerson();
+        if (!person) return;
+        const date = document.getElementById("meetingDateInput").value;
+        const type = document.getElementById("meetingTypeSelect").value;
+        const summary = document.getElementById("meetingSummaryInput").value.trim();
+        if (!date || !summary) return;
+        person.meetings = [{ id: uid("meet"), date, type, summary, createdAt: new Date().toISOString() }, ...(person.meetings || [])].sort((a, b) => b.date.localeCompare(a.date));
+        person.updatedAt = new Date().toISOString();
+        person.lastContactAt = computeLatestContactIso(person);
+        savePersonToCloud(person);
+        closeModal("addMeetingModal");
+        renderAll();
+        showToast("Встреча/контакт записаны в таймлайн", "success");
+      });
+
+      const searchInput = document.getElementById("searchInput");
+      const searchClearBtn = document.getElementById("searchClearBtn");
+      searchInput.addEventListener("input", e => {
+        state.searchQuery = e.target.value;
+        searchClearBtn.classList.toggle("visible", Boolean(state.searchQuery));
+        renderAll();
+      });
+      searchClearBtn.addEventListener("click", () => { clearSearchFilter(); renderAll(); });
+
+      document.getElementById("themeToggleBtn").addEventListener("click", () => {
+        const next = (document.documentElement.getAttribute("data-theme") || "dark") === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
+        document.getElementById("themeIcon").textContent = next === "dark" ? "☀️" : "🌙";
+        safeStorage.setItem(STORAGE_THEME_KEY, next);
+      });
+
+      document.getElementById("exportJsonBtn").addEventListener("click", () => {
+        const blob = new Blob([JSON.stringify({ app: "SmartPeopleNotebook", exportedAt: new Date().toISOString(), people: state.people }, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = "people-notebook-" + new Date().toISOString().slice(0, 10) + ".json";
+        document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+      });
+
+      document.getElementById("importJsonBtn").addEventListener("click", () => document.getElementById("importFileInput").click());
+      document.getElementById("importFileInput").addEventListener("change", e => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async ev => {
+          try {
+            const parsed = JSON.parse(ev.target.result);
+            if (!parsed || !Array.isArray(parsed.people)) throw new Error("INVALID");
+            state.people = normalizePeople(parsed.people);
+            state.activePersonId = state.people[0]?.id || null;
+            persistLocalSnapshot();
+            if (state.currentUser && db) await syncAllMapToCloud(state.currentUser.uid, state.people);
+            renderAll();
+            showToast(`Импортировано вкладок: ${state.people.length}`, "success");
+          } catch { showToast("Ошибка формата JSON", "error"); }
+        };
+        reader.readAsText(file);
+        e.target.value = "";
+      });
+
+      document.getElementById("apiSettingsBtn").addEventListener("click", () => {
+        document.getElementById("apiKeyInput").value = safeStorage.getItem(STORAGE_API_KEY) || "";
+        openModal("apiSettingsModal");
+      });
+      document.getElementById("saveApiKeyBtn").addEventListener("click", () => {
+        const val = document.getElementById("apiKeyInput").value.trim();
+        if (val) { safeStorage.setItem(STORAGE_API_KEY, val); state.activeEngine = "gemini"; showToast("API-ключ сохранён", "success"); }
+        else { safeStorage.removeItem(STORAGE_API_KEY); detectInitialEngine(); showToast("Ключ очищен", "info"); }
+        updateEngineBadge(); closeModal("apiSettingsModal");
+      });
+      document.getElementById("clearApiKeyBtn").addEventListener("click", () => {
+        safeStorage.removeItem(STORAGE_API_KEY); document.getElementById("apiKeyInput").value = ""; detectInitialEngine();
+      });
+
+      document.getElementById("confirmOkBtn").addEventListener("click", () => {
+        if (typeof state.confirmAction === "function") state.confirmAction();
+        state.confirmAction = null; closeModal("confirmModal");
+      });
+
+      document.getElementById("summaryTabSingle").addEventListener("click", () => { if (state.summaryMode !== "single") generateAndShowSummary("single"); });
+      document.getElementById("summaryTabAll").addEventListener("click", () => { if (state.summaryMode !== "all") generateAndShowSummary("all"); });
+      document.getElementById("copySummaryBtn").addEventListener("click", () => { if (state.summaryData) copyToClipboard(formatSummaryPlainText(state.summaryData)); });
+      document.getElementById("downloadSummaryTxtBtn").addEventListener("click", () => {
+        if (!state.summaryData) return;
+        const blob = new Blob([formatSummaryPlainText(state.summaryData)], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = "ai-dosye-" + new Date().toISOString().slice(0, 10) + ".txt";
+        document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+      });
+      document.getElementById("refreshSummaryBtn").addEventListener("click", () => generateAndShowSummary(state.summaryMode));
+
+      document.addEventListener("click", e => {
+        const closeBtn = e.target.closest("[data-close-modal]");
+        if (closeBtn) { closeModal(closeBtn.dataset.closeModal); return; }
+        if (e.target.classList.contains("modal-backdrop")) e.target.classList.remove("open");
+      });
+      document.addEventListener("keydown", e => {
+        if (e.key === "Escape") document.querySelectorAll(".modal-backdrop.open").forEach(m => m.classList.remove("open"));
+      });
+    }
+
+    function initApp() {
+      const savedTheme = safeStorage.getItem(STORAGE_THEME_KEY) || "dark";
+      document.documentElement.setAttribute("data-theme", savedTheme);
+      document.getElementById("themeIcon").textContent = savedTheme === "dark" ? "☀️" : "🌙";
+      detectInitialEngine();
+      setupEventListeners();
+
+      try {
+        const app = initializeApp(firebaseConfig);
+        db = getDatabase(app);
+        auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence, inMemoryPersistence] });
+        onAuthStateChanged(auth, user => {
+          state.currentUser = user || null;
+          if (user) { state.isGuestMode = false; connectUserCloudDatabase(user); }
+          else if (state.isGuestMode) connectUserCloudDatabase(null);
+          else {
+            if (unsubscribeCloud) { unsubscribeCloud(); unsubscribeCloud = null; }
+            state.people = []; state.activePersonId = null; clearSearchFilter(); showAuthScreen();
+          }
+        });
+      } catch (err) {
+        showAuthScreen();
+        const errBox = document.getElementById("authErrorBox");
+        errBox.textContent = "Ошибка инициализации Firebase: " + (err && err.message ? err.message : err);
+        errBox.classList.remove("hidden");
+      }
+    }
+
+    if (document.readyState === "loading") window.addEventListener("DOMContentLoaded", initApp);
+    else initApp();
+  </script>
+</body>
+</html>
