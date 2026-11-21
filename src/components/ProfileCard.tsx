@@ -1,18 +1,11 @@
 import React, { useState } from 'react';
-import {
-  Pin,
-  Sparkles,
-  Plus,
-  Trash2,
-  CalendarPlus,
-  Eraser,
-  Pencil,
-  Clock,
-} from 'lucide-react';
+import { Pin, Plus, CalendarPlus, Trash2 } from 'lucide-react';
 import type { Person } from '../types/notebook';
 import { DEFAULT_GROUPS, getAvatarGradient } from '../data/sampleData';
 import { formatDateTime, getInitials } from '../utils/storage';
-import { formatDaysRussian, getDaysSinceLastContact } from '../utils/dateReminders';
+import { formatDaysForLang, getDaysSinceLastContact } from '../utils/dateReminders';
+import { useI18n } from '../utils/LanguageContext';
+import { translateGroupLabel } from '../utils/i18n';
 
 interface ProfileCardProps {
   person: Person;
@@ -41,6 +34,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
   onDeduplicate,
   onDeletePerson,
 }) => {
+  const { lang, t } = useI18n();
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(person.name);
   const [editingSub, setEditingSub] = useState(false);
@@ -71,17 +65,14 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
 
   return (
     <section
-      className="rounded-2xl border p-4 sm:p-5 shadow-sm flex flex-col gap-3.5"
-      style={{
-        backgroundColor: 'var(--bg-surface)',
-        borderColor: 'var(--border-color)',
-      }}
+      className="pb-5 border-b flex flex-col gap-4"
+      style={{ borderColor: 'var(--border-color)' }}
     >
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-center gap-3.5 min-w-[220px] flex-1">
           <div
-            className="w-13 h-13 rounded-2xl text-white text-xl font-bold flex items-center justify-center shrink-0 shadow-md"
-            style={{ background: getAvatarGradient(person.colorId) }}
+            className="w-11 h-11 rounded-lg text-white text-base font-semibold flex items-center justify-center shrink-0"
+            style={{ backgroundColor: getAvatarGradient(person.colorId) }}
           >
             {getInitials(person.name)}
           </div>
@@ -102,53 +93,24 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
                       setEditingName(false);
                     }
                   }}
-                  className="px-2 py-0.5 rounded-lg border text-xl font-bold outline-none"
+                  className="px-2 py-0.5 rounded-md border text-xl font-semibold outline-none"
                   style={{
                     backgroundColor: 'var(--bg-input)',
-                    borderColor: 'var(--accent)',
+                    borderColor: 'var(--border-hover)',
                   }}
                 />
               ) : (
-                <>
-                  <h1
-                    onClick={() => {
-                      setNameDraft(person.name);
-                      setEditingName(true);
-                    }}
-                    title="Нажмите, чтобы переименовать"
-                    className="font-display text-[22px] font-bold tracking-tight cursor-pointer hover:text-violet-400 transition-colors"
-                  >
-                    {person.name}
-                  </h1>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setNameDraft(person.name);
-                      setEditingName(true);
-                    }}
-                    aria-label="Переименовать вкладку"
-                    title="Переименовать вкладку"
-                    className="p-1 rounded-lg opacity-70 hover:opacity-100"
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                </>
+                <h1
+                  onClick={() => {
+                    setNameDraft(person.name);
+                    setEditingName(true);
+                  }}
+                  title={t.profileCard.renameTitle}
+                  className="font-display text-[22px] font-semibold tracking-tight cursor-pointer hover:opacity-80 transition-opacity"
+                >
+                  {person.name}
+                </h1>
               )}
-
-              <button
-                type="button"
-                onClick={onTogglePin}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border text-xs font-medium transition-colors"
-                style={{
-                  backgroundColor: person.isPinned ? 'var(--warning-bg)' : 'var(--bg-elevated)',
-                  borderColor: person.isPinned ? 'var(--warning-border)' : 'var(--border-color)',
-                  color: person.isPinned ? 'var(--warning-text)' : 'var(--text-secondary)',
-                }}
-                title={person.isPinned ? 'Открепить вкладку' : 'Закрепить в начале списка'}
-              >
-                <Pin className={`w-3 h-3 ${person.isPinned ? 'fill-current' : ''}`} />
-                <span>{person.isPinned ? 'Закреплено' : 'Закрепить'}</span>
-              </button>
             </div>
 
             {editingSub ? (
@@ -165,10 +127,10 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
                     setEditingSub(false);
                   }
                 }}
-                className="mt-1 w-full max-w-md px-2 py-0.5 rounded-lg border text-[13px] outline-none"
+                className="mt-1 w-full max-w-md px-2 py-0.5 rounded-md border text-[13px] outline-none"
                 style={{
                   backgroundColor: 'var(--bg-input)',
-                  borderColor: 'var(--accent)',
+                  borderColor: 'var(--border-hover)',
                 }}
               />
             ) : (
@@ -177,119 +139,139 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
                   setSubDraft(person.subtitle);
                   setEditingSub(true);
                 }}
-                title="Нажмите, чтобы изменить пометку"
-                className="text-[13px] mt-0.5 cursor-pointer hover:opacity-90"
+                title={t.profileCard.editSubtitleTitle}
+                className="text-[13px] mt-0.5 cursor-pointer hover:opacity-80 transition-opacity"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                {person.subtitle || 'Нажмите, чтобы добавить краткое описание...'}
+                {person.subtitle || t.profileCard.addSubtitlePlaceholder}
               </p>
             )}
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Calm flat action row */}
+        <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
             onClick={onOpenDossier}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-semibold text-white whitespace-nowrap shadow-sm transition-all hover:brightness-110"
-            style={{ background: 'var(--accent-gradient)' }}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-md border text-[13px] font-medium whitespace-nowrap shrink-0 transition-colors hover:bg-[var(--bg-hover)]"
+            style={{
+              backgroundColor: 'var(--bg-elevated)',
+              borderColor: 'var(--border-color)',
+              color: 'var(--text-primary)',
+            }}
           >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Собрать все данные (ИИ)</span>
+            <span>{t.profileCard.summaryBtn}</span>
           </button>
 
           <button
             type="button"
             onClick={onOpenAddMeeting}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-[13px] font-semibold whitespace-nowrap transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-[13px] font-medium whitespace-nowrap shrink-0 transition-colors hover:bg-[var(--bg-hover)]"
             style={{
-              backgroundColor: 'var(--bg-elevated)',
+              backgroundColor: 'var(--bg-surface)',
               borderColor: 'var(--border-color)',
               color: 'var(--text-primary)',
             }}
           >
-            <CalendarPlus className="w-3.5 h-3.5" />
-            <span>Записать встречу / звонок</span>
+            <CalendarPlus className="w-3.5 h-3.5 opacity-70" />
+            <span>{t.profileCard.contactBtn}</span>
           </button>
 
           <button
             type="button"
             onClick={onOpenAddColumn}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-[13px] font-semibold whitespace-nowrap transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-[13px] font-medium whitespace-nowrap shrink-0 transition-colors hover:bg-[var(--bg-hover)]"
             style={{
-              backgroundColor: 'var(--bg-elevated)',
+              backgroundColor: 'var(--bg-surface)',
               borderColor: 'var(--border-color)',
               color: 'var(--text-primary)',
             }}
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Колонка</span>
+            <Plus className="w-3.5 h-3.5 opacity-70" />
+            <span>{t.profileCard.sectionBtn}</span>
           </button>
 
           <button
             type="button"
             onClick={onDeduplicate}
-            title="Проверить и удалить повторяющиеся факты"
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-[13px] font-semibold whitespace-nowrap transition-colors"
+            title={t.profileCard.dedupTitle}
+            className="px-3 py-1.5 rounded-md border text-[13px] font-medium whitespace-nowrap shrink-0 transition-colors hover:bg-[var(--bg-hover)]"
             style={{
-              backgroundColor: 'var(--bg-elevated)',
+              backgroundColor: 'var(--bg-surface)',
               borderColor: 'var(--border-color)',
-              color: 'var(--text-primary)',
+              color: 'var(--text-secondary)',
             }}
           >
-            <Eraser className="w-3.5 h-3.5" />
-            <span>Убрать дубли</span>
+            {t.profileCard.dedupBtn}
+          </button>
+
+          <button
+            type="button"
+            onClick={onTogglePin}
+            aria-label={person.isPinned ? t.profileCard.unpinAria : t.profileCard.pinAria}
+            aria-pressed={Boolean(person.isPinned)}
+            title={person.isPinned ? t.profileCard.unpinAria : t.profileCard.pinTitle}
+            className="w-8 h-8 rounded-md border inline-flex items-center justify-center transition-colors hover:bg-[var(--bg-hover)] shrink-0"
+            style={{
+              backgroundColor: person.isPinned ? 'var(--bg-hover)' : 'var(--bg-surface)',
+              borderColor: 'var(--border-color)',
+              color: person.isPinned ? 'var(--text-primary)' : 'var(--text-muted)',
+            }}
+          >
+            <Pin className={`w-3.5 h-3.5 ${person.isPinned ? 'fill-current' : ''}`} />
           </button>
 
           <button
             type="button"
             onClick={onDeletePerson}
-            title="Удалить вкладку человека"
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-[13px] font-semibold whitespace-nowrap transition-colors hover:opacity-90"
+            aria-label={t.profileCard.deleteAria(person.name)}
+            title={t.profileCard.deleteTitle}
+            className="w-8 h-8 rounded-md border inline-flex items-center justify-center transition-colors hover:bg-[var(--danger-bg)] shrink-0"
             style={{
-              color: 'var(--danger-text)',
-              backgroundColor: 'var(--danger-bg)',
+              backgroundColor: 'var(--bg-surface)',
+              borderColor: 'var(--border-color)',
+              color: 'var(--text-muted)',
             }}
           >
             <Trash2 className="w-3.5 h-3.5" />
-            <span>Удалить вкладку</span>
           </button>
         </div>
       </div>
 
-      {/* Full-width unboxed typographic metadata + inline group/interval controls */}
+      {/* Unboxed typographic metadata + inline group/interval controls */}
       <div
-        className="pt-3 border-t flex flex-wrap items-center gap-x-3 gap-y-2 text-xs"
-        style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}
+        className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs"
+        style={{ color: 'var(--text-muted)' }}
       >
         <span className="tabular-nums">
-          Категорий: <strong style={{ color: 'var(--text-secondary)' }}>{person.columns.length}</strong>
+          {t.profileCard.sectionsCount} <span style={{ color: 'var(--text-secondary)' }}>{person.columns.length}</span>
         </span>
         <span aria-hidden="true">·</span>
         <span className="tabular-nums">
-          Фактов: <strong style={{ color: 'var(--text-secondary)' }}>{totalFacts}</strong>
+          {t.profileCard.factsCount} <span style={{ color: 'var(--text-secondary)' }}>{totalFacts}</span>
         </span>
         <span aria-hidden="true">·</span>
-        <span>Обновлено: {formatDateTime(person.updatedAt)}</span>
+        <span>{t.profileCard.updatedLabel} {formatDateTime(person.updatedAt, lang)}</span>
         <span aria-hidden="true">·</span>
 
         <label className="inline-flex items-center gap-1.5">
-          <span>Группа:</span>
+          <span>{t.profileCard.groupLabel}</span>
           <select
             value={person.group || ''}
             onChange={(e) => onChangeGroup(e.target.value)}
-            aria-label="Группа контакта"
-            className="px-2 py-0.5 rounded-md border text-xs outline-none cursor-pointer"
+            aria-label={t.profileCard.groupAria}
+            className="px-1.5 py-0.5 rounded border text-xs outline-none cursor-pointer"
             style={{
-              backgroundColor: 'var(--bg-elevated)',
+              backgroundColor: 'var(--bg-surface)',
               borderColor: 'var(--border-color)',
               color: 'var(--text-primary)',
             }}
           >
-            <option value="">Без группы</option>
+            <option value="">{t.groups.none}</option>
             {DEFAULT_GROUPS.map((g) => (
               <option key={g} value={g}>
-                {g}
+                {translateGroupLabel(g, lang)}
               </option>
             ))}
           </select>
@@ -298,37 +280,32 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
         <span aria-hidden="true">·</span>
 
         <label className="inline-flex items-center gap-1.5">
-          <span>Трекер общения:</span>
+          <span>{t.profileCard.remindLabel}</span>
           <select
             value={String(threshold)}
             onChange={(e) => onChangeInterval(Number(e.target.value))}
-            aria-label="Интервал напоминания о контакте"
-            className="px-2 py-0.5 rounded-md border text-xs outline-none cursor-pointer"
+            aria-label={t.profileCard.remindAria}
+            className="px-1.5 py-0.5 rounded border text-xs outline-none cursor-pointer"
             style={{
-              backgroundColor: 'var(--bg-elevated)',
+              backgroundColor: 'var(--bg-surface)',
               borderColor: 'var(--border-color)',
               color: 'var(--text-primary)',
             }}
           >
-            <option value="14">Раз в 14 дн.</option>
-            <option value="30">Раз в 30 дн.</option>
-            <option value="60">Раз в 60 дн.</option>
-            <option value="0">Выкл</option>
+            <option value="14">{t.profileCard.every14}</option>
+            <option value="30">{t.profileCard.every30}</option>
+            <option value="60">{t.profileCard.every60}</option>
+            <option value="0">{t.profileCard.off}</option>
           </select>
         </label>
 
         {isOverdue && (
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border font-semibold tabular-nums"
-            style={{
-              backgroundColor: 'var(--warning-bg)',
-              borderColor: 'var(--warning-border)',
-              color: 'var(--warning-text)',
-            }}
-          >
-            <Clock className="w-3 h-3" />
-            <span>Не общались {formatDaysRussian(daysSince)}</span>
-          </span>
+          <>
+            <span aria-hidden="true">·</span>
+            <span className="font-medium tabular-nums" style={{ color: 'var(--warning-text)' }}>
+              {t.profileCard.noContactFor(formatDaysForLang(daysSince, lang))}
+            </span>
+          </>
         )}
       </div>
     </section>

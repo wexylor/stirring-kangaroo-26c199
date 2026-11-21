@@ -21,6 +21,18 @@ test('parseRussianDatesFromText parses Russian month names and numeric dates', (
 
   const invalid = parseRussianDatesFromText('Встреча в 18:30 или 35.13');
   assert.deepEqual(invalid, []);
+
+  const kkDates = parseRussianDatesFromText('Туған күн 25 қараша және 3 наурыз');
+  assert.deepEqual(kkDates, [
+    { day: 25, month: 11 },
+    { day: 3, month: 3 },
+  ]);
+
+  const enDates = parseRussianDatesFromText('Birthday November 25 and 14 October');
+  assert.deepEqual(enDates, [
+    { day: 25, month: 11 },
+    { day: 14, month: 10 },
+  ]);
 });
 
 test('computeDaysUntilNextOccurrence handles same year and year rollover', () => {

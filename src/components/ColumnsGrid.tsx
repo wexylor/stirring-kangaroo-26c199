@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
-import { Filter, X, Plus } from 'lucide-react';
-import type { Column, Fact, Person } from '../types/notebook';
+import { CalendarPlus, History, Plus, X } from 'lucide-react';
+import type { Column, Fact, FactHistoryEntry, Person } from '../types/notebook';
+import { useI18n } from '../utils/LanguageContext';
+import { extractExportableDateFromFact } from '../utils/calendarExport';
+import { formatDateTime } from '../utils/storage';
 
 interface ColumnsGridProps {
   person: Person;
@@ -11,6 +14,7 @@ interface ColumnsGridProps {
   onEditFact: (colId: string, factId: string, newText: string) => void;
   onDeleteFact: (colId: string, factId: string) => void;
   onQuickAddFact: (colId: string, text: string) => void;
+  onExportDateToCalendar?: (factText: string, colTitle: string) => void;
 }
 
 interface ColumnCardProps {
@@ -20,6 +24,7 @@ interface ColumnCardProps {
   onEditFact: (colId: string, factId: string, newText: string) => void;
   onDeleteFact: (colId: string, factId: string) => void;
   onQuickAddFact: (colId: string, text: string) => void;
+  onExportDateToCalendar?: (factText: string, colTitle: string) => void;
 }
 
 const ColumnCard: React.FC<ColumnCardProps> = ({
@@ -29,12 +34,19 @@ const ColumnCard: React.FC<ColumnCardProps> = ({
   onEditFact,
   onDeleteFact,
   onQuickAddFact,
+  onExportDateToCalendar,
 }) => {
+  const { lang, t } = useI18n();
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(col.title);
   const [editingFactId, setEditingFactId] = useState<string | null>(null);
   const [factDraft, setFactDraft] = useState('');
   const [quickInput, setQuickInput] = useState('');
+  const [expandedHistoryIds, setExpandedHistoryIds] = useState<Record<string, boolean>>({});
+
+  const toggleHistory = (factId: string) => {
+    setExpandedHistoryIds((prev) => ({ ...prev, [factId]: !prev[factId] }));
+  };
 
   const commitTitle = () => {
     setEditingTitle(false);
@@ -58,15 +70,14 @@ const ColumnCard: React.FC<ColumnCardProps> = ({
 
   return (
     <article
-      className="rounded-2xl border p-4 shadow-sm flex flex-col gap-3 transition-colors"
+      className="rounded-lg border p-4 flex flex-col gap-3"
       style={{
         backgroundColor: 'var(--bg-surface)',
-        borderColor: col.isNew ? 'rgba(124, 58, 237, 0.65)' : 'var(--border-color)',
+        borderColor: col.isNew ? 'var(--border-hover)' : 'var(--border-color)',
       }}
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 pb-2 border-b" style={{ borderColor: 'var(--border-color)' }}>
         <div className="flex items-center gap-2 min-w-0 flex-1">
-          <span className="text-lg shrink-0">{col.icon || '📌'}</span>
           {editingTitle ? (
             <input
               type="text"
@@ -81,10 +92,10 @@ const ColumnCard: React.FC<ColumnCardProps> = ({
                   setEditingTitle(false);
                 }
               }}
-              className="w-full px-2 py-0.5 rounded-md border text-[15px] font-bold outline-none"
+              className="w-full px-2 py-0.5 rounded border text-sm font-semibold outline-none"
               style={{
                 backgroundColor: 'var(--bg-input)',
-                borderColor: 'var(--accent)',
+                borderColor: 'var(--border-hover)',
               }}
             />
           ) : (
@@ -93,8 +104,8 @@ const ColumnCard: React.FC<ColumnCardProps> = ({
                 setTitleDraft(col.title);
                 setEditingTitle(true);
               }}
-              title="Нажмите, чтобы переименовать колонку"
-              className="text-[15px] font-bold truncate cursor-pointer hover:text-violet-400 transition-colors"
+              title={t.columns.renameTitle}
+              className="text-[14px] font-semibold truncate cursor-pointer hover:opacity-80 transition-opacity"
             >
               {col.title}
             </h3>
@@ -103,15 +114,8 @@ const ColumnCard: React.FC<ColumnCardProps> = ({
             {col.facts.length}
           </span>
           {col.isNew && (
-            <span
-              className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-md border shrink-0"
-              style={{
-                backgroundColor: 'var(--accent-soft)',
-                color: 'var(--accent-text)',
-                borderColor: 'rgba(124, 58, 237, 0.3)',
-              }}
-            >
-              Новое
+            <span className="text-[11px] font-medium shrink-0" style={{ color: 'var(--success-text)' }}>
+              {t.columns.newBadge}
             </span>
           )}
         </div>
@@ -119,150 +123,151 @@ const ColumnCard: React.FC<ColumnCardProps> = ({
         <button
           type="button"
           onClick={() => onDeleteColumn(col.id)}
-          aria-label={`Удалить колонку «${col.title}»`}
-          title="Удалить колонку"
-          className="w-6 h-6 rounded-md inline-flex items-center justify-center text-sm opacity-65 hover:opacity-100"
+          aria-label={t.columns.deleteSectionAria(col.title)}
+          title={t.columns.deleteSectionTitle}
+          className="w-6 h-6 rounded inline-flex items-center justify-center opacity-50 hover:opacity-100 hover:bg-[var(--bg-hover)] transition-opacity"
           style={{ color: 'var(--text-muted)' }}
         >
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
 
-      <ul className="flex flex-col gap-2">
+      <ul className="divide-y" style={{ borderColor: 'var(--border-color)' }}>
         {col.facts.length === 0 ? (
-          <li className="text-xs italic py-1 px-0.5" style={{ color: 'var(--text-muted)' }}>
-            Пока нет записей в этой колонке
+          <li className="text-xs py-1.5" style={{ color: 'var(--text-muted)' }}>
+            {t.columns.emptyFacts}
           </li>
         ) : (
           col.facts.map((fact) => {
             const isInf = fact.tag === 'ai_inference';
             const isUpd = fact.tag === 'updated';
-
-            const itemStyle = isInf
-              ? {
-                  backgroundColor: 'rgba(245, 158, 11, 0.08)',
-                  borderColor: 'var(--warning-border)',
-                }
-              : isUpd
-              ? {
-                  backgroundColor: 'var(--info-bg)',
-                  borderColor: 'var(--info-border)',
-                }
-              : fact.isNew
-              ? {
-                  backgroundColor: 'var(--success-bg)',
-                  borderColor: 'var(--success-border)',
-                }
-              : {
-                  backgroundColor: 'var(--bg-fact)',
-                  borderColor: 'transparent',
-                };
-
-            const dotColor = isInf
-              ? '#f59e0b'
-              : isUpd
-              ? '#0ea5e9'
-              : fact.isNew
-              ? '#10b981'
-              : 'var(--accent)';
+            const historyEntries: FactHistoryEntry[] =
+              fact.history && fact.history.length > 0
+                ? fact.history
+                : fact.prevText
+                ? [{ text: fact.prevText, changedAt: '', reason: fact.reason }]
+                : [];
+            const hasHistory = historyEntries.length > 0;
+            const isHistoryOpen = Boolean(expandedHistoryIds[fact.id]);
+            const exportableDate = onExportDateToCalendar
+              ? extractExportableDateFromFact(col.title, fact.text)
+              : null;
 
             return (
               <li
                 key={fact.id}
-                className="flex items-start justify-between gap-2 px-2.5 py-2 rounded-xl border text-[13px] leading-snug"
-                style={itemStyle}
+                className="group flex items-start justify-between gap-2 py-2 first:pt-0.5 last:pb-0.5 text-[13px] leading-snug"
+                style={{ borderColor: 'var(--border-color)' }}
               >
-                <div className="flex items-start gap-2 flex-1 min-w-0">
-                  <span
-                    className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
-                    style={{ backgroundColor: dotColor }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    {editingFactId === fact.id ? (
-                      <input
-                        type="text"
-                        autoFocus
-                        value={factDraft}
-                        onChange={(e) => setFactDraft(e.target.value)}
-                        onBlur={() => commitFact(fact.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') commitFact(fact.id);
-                          if (e.key === 'Escape') setEditingFactId(null);
-                        }}
-                        className="w-full px-2 py-0.5 rounded-md border text-[13px] outline-none"
-                        style={{
-                          backgroundColor: 'var(--bg-input)',
-                          borderColor: 'var(--accent)',
-                        }}
-                      />
-                    ) : (
-                      <span
-                        onClick={() => startFactEdit(fact)}
-                        title="Нажмите, чтобы отредактировать"
-                        className="block break-words cursor-pointer"
-                      >
-                        {fact.text}
-                      </span>
-                    )}
-                    {fact.prevText && (
-                      <span className="block text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                        Было: {fact.prevText}
-                      </span>
-                    )}
-                    {fact.reason && (
-                      <span className="block text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                        ↳ {fact.reason}
-                      </span>
-                    )}
-                  </div>
+                <div className="flex-1 min-w-0">
+                  {editingFactId === fact.id ? (
+                    <input
+                      type="text"
+                      autoFocus
+                      aria-label={t.columns.editFactTitle}
+                      value={factDraft}
+                      onChange={(e) => setFactDraft(e.target.value)}
+                      onBlur={() => commitFact(fact.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitFact(fact.id);
+                        if (e.key === 'Escape') setEditingFactId(null);
+                      }}
+                      className="w-full px-2 py-0.5 rounded border text-[13px] outline-none"
+                      style={{
+                        backgroundColor: 'var(--bg-input)',
+                        borderColor: 'var(--border-hover)',
+                      }}
+                    />
+                  ) : (
+                    <span
+                      onClick={() => startFactEdit(fact)}
+                      title={t.columns.editFactTitle}
+                      className="block break-words cursor-pointer hover:opacity-85"
+                    >
+                      {fact.text}
+                    </span>
+                  )}
+
+                  {(isInf || isUpd || fact.isNew || fact.prevText || fact.reason || hasHistory) && (
+                    <div
+                      className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 text-[11px]"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      {isInf && <span style={{ color: 'var(--warning-text)' }}>{t.columns.tagInference}</span>}
+                      {isUpd && <span style={{ color: 'var(--info-text)' }}>{t.columns.tagUpdated}</span>}
+                      {!isInf && !isUpd && fact.isNew && (
+                        <span style={{ color: 'var(--success-text)' }}>{t.columns.tagNew}</span>
+                      )}
+                      {fact.prevText && !isHistoryOpen && (
+                        <span>
+                          {t.columns.prevLabel} {fact.prevText}
+                        </span>
+                      )}
+                      {fact.reason && <span>· {fact.reason}</span>}
+                      {hasHistory && (
+                        <button
+                          type="button"
+                          onClick={() => toggleHistory(fact.id)}
+                          aria-expanded={isHistoryOpen}
+                          className="inline-flex items-center gap-1 hover:underline"
+                          style={{ color: 'var(--text-secondary)' }}
+                        >
+                          <History className="w-3 h-3" />
+                          <span>
+                            {isHistoryOpen
+                              ? t.columns.historyHideBtn
+                              : t.columns.historyBtn(historyEntries.length)}
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {hasHistory && isHistoryOpen && (
+                    <ol
+                      className="mt-1.5 pl-2.5 border-l-2 space-y-1 text-[11.5px]"
+                      style={{
+                        borderColor: 'var(--border-color)',
+                        color: 'var(--text-secondary)',
+                      }}
+                    >
+                      {historyEntries.map((entry, idx) => (
+                        <li key={`${fact.id}_hist_${idx}`} className="leading-snug">
+                          <span className="line-through opacity-75">{entry.text}</span>
+                          {entry.changedAt && (
+                            <span className="ml-1.5 text-[10.5px]" style={{ color: 'var(--text-muted)' }}>
+                              ({formatDateTime(entry.changedAt, lang)})
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
                 </div>
 
-                <div className="flex items-center gap-1 shrink-0">
-                  {isInf && (
-                    <span
-                      className="text-[9.5px] font-bold px-1.5 py-0.5 rounded-md border whitespace-nowrap"
-                      style={{
-                        backgroundColor: 'var(--warning-bg)',
-                        borderColor: 'var(--warning-border)',
-                        color: 'var(--warning-text)',
-                      }}
+                <div className="flex items-center gap-0.5 shrink-0 mt-0.5">
+                  {exportableDate && onExportDateToCalendar && (
+                    <button
+                      type="button"
+                      onClick={() => onExportDateToCalendar(fact.text, col.title)}
+                      aria-label={t.columns.exportCalendarAria(fact.text)}
+                      title={t.columns.exportCalendarTitle}
+                      className="w-5 h-5 rounded inline-flex items-center justify-center opacity-55 group-hover:opacity-100 focus:opacity-100 hover:bg-[var(--bg-hover)] transition-opacity"
+                      style={{ color: 'var(--text-secondary)' }}
                     >
-                      💡 вывод ИИ
-                    </span>
+                      <CalendarPlus className="w-3.5 h-3.5" />
+                    </button>
                   )}
-                  {isUpd && (
-                    <span
-                      className="text-[9.5px] font-bold px-1.5 py-0.5 rounded-md border whitespace-nowrap"
-                      style={{
-                        backgroundColor: 'var(--info-bg)',
-                        borderColor: 'var(--info-border)',
-                        color: 'var(--info-text)',
-                      }}
-                    >
-                      🔄 обновлено
-                    </span>
-                  )}
-                  {!isInf && !isUpd && fact.isNew && (
-                    <span
-                      className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-md border whitespace-nowrap"
-                      style={{
-                        backgroundColor: 'var(--success-bg)',
-                        borderColor: 'var(--success-border)',
-                        color: 'var(--success-text)',
-                      }}
-                    >
-                      Новое
-                    </span>
-                  )}
+
                   <button
                     type="button"
                     onClick={() => onDeleteFact(col.id, fact.id)}
-                    aria-label={`Удалить факт «${fact.text}»`}
-                    title="Удалить факт"
-                    className="w-5 h-5 rounded inline-flex items-center justify-center opacity-60 hover:opacity-100"
+                    aria-label={t.columns.deleteFactAria(fact.text)}
+                    title={t.common.delete}
+                    className="w-5 h-5 rounded inline-flex items-center justify-center opacity-40 group-hover:opacity-100 focus:opacity-100 hover:bg-[var(--bg-hover)] transition-opacity"
                     style={{ color: 'var(--text-muted)' }}
                   >
-                    <X className="w-3.5 h-3.5" />
+                    <X className="w-3 h-3" />
                   </button>
                 </div>
               </li>
@@ -279,14 +284,15 @@ const ColumnCard: React.FC<ColumnCardProps> = ({
           onQuickAddFact(col.id, val);
           setQuickInput('');
         }}
-        className="flex items-center gap-1.5 mt-0.5"
+        className="flex items-center gap-1.5 pt-1"
       >
         <input
           type="text"
           value={quickInput}
           onChange={(e) => setQuickInput(e.target.value)}
-          placeholder="+ Добавить факт вручную..."
-          className="flex-1 px-2.5 py-1.5 rounded-lg border text-xs outline-none focus:ring-1 focus:ring-violet-500/40"
+          placeholder={t.columns.quickAddPlaceholder}
+          aria-label={t.columns.quickAddAria(col.title)}
+          className="flex-1 px-2.5 py-1.5 rounded-md border text-xs outline-none"
           style={{
             backgroundColor: 'var(--bg-input)',
             borderColor: 'var(--border-color)',
@@ -294,16 +300,16 @@ const ColumnCard: React.FC<ColumnCardProps> = ({
         />
         <button
           type="submit"
-          aria-label={`Добавить факт в колонку «${col.title}»`}
-          title="Добавить"
-          className="w-8 h-8 rounded-lg border inline-flex items-center justify-center transition-colors hover:brightness-110"
+          aria-label={t.columns.quickAddAria(col.title)}
+          title={t.common.add}
+          className="w-7 h-7 rounded-md border inline-flex items-center justify-center transition-colors hover:bg-[var(--bg-hover)] shrink-0"
           style={{
             backgroundColor: 'var(--bg-elevated)',
             borderColor: 'var(--border-color)',
             color: 'var(--text-secondary)',
           }}
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-3.5 h-3.5" />
         </button>
       </form>
     </article>
@@ -319,7 +325,9 @@ export const ColumnsGrid: React.FC<ColumnsGridProps> = ({
   onEditFact,
   onDeleteFact,
   onQuickAddFact,
+  onExportDateToCalendar,
 }) => {
+  const { t } = useI18n();
   const query = searchQuery.trim().toLowerCase();
 
   const filteredColumns = person.columns
@@ -336,44 +344,35 @@ export const ColumnsGrid: React.FC<ColumnsGridProps> = ({
 
   return (
     <section className="flex flex-col gap-3">
-      {/* Visible active filter banner above cards so users never think columns vanished on tab switch */}
       {query && (
         <div
-          className="rounded-xl border px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-[13px]"
+          className="rounded-md border px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 text-xs"
           style={{
-            backgroundColor: 'var(--warning-bg)',
-            borderColor: 'var(--warning-border)',
-            color: 'var(--warning-text)',
+            backgroundColor: 'var(--bg-surface)',
+            borderColor: 'var(--border-color)',
+            color: 'var(--text-secondary)',
           }}
         >
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 shrink-0" />
-            <span>
-              Активен фильтр: <strong>«{searchQuery}»</strong> · показано колонок:{' '}
-              <span className="tabular-nums font-semibold">
-                {filteredColumns.length} из {person.columns.length}
-              </span>
+          <span>
+            {t.columns.filterPrefix} <strong style={{ color: 'var(--text-primary)' }}>«{searchQuery}»</strong> ·{' '}
+            <span className="tabular-nums">
+              {t.columns.sectionsOf(filteredColumns.length, person.columns.length)}
             </span>
-          </div>
+          </span>
           <button
             type="button"
             onClick={onClearSearch}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors hover:brightness-110"
-            style={{
-              backgroundColor: 'var(--bg-surface)',
-              borderColor: 'var(--warning-border)',
-              color: 'var(--text-primary)',
-            }}
+            className="text-xs font-medium hover:underline"
+            style={{ color: 'var(--text-primary)' }}
           >
-            <X className="w-3.5 h-3.5" />
-            <span>Сбросить фильтр</span>
+            {t.columns.resetFilter}
           </button>
         </div>
       )}
 
       {filteredColumns.length === 0 ? (
         <div
-          className="rounded-2xl border p-8 text-center"
+          className="rounded-lg border p-8 text-center"
           style={{
             backgroundColor: 'var(--bg-surface)',
             borderColor: 'var(--border-color)',
@@ -381,12 +380,12 @@ export const ColumnsGrid: React.FC<ColumnsGridProps> = ({
         >
           <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
             {query
-              ? `У человека «${person.name}» по запросу «${searchQuery}» совпадений не найдено.`
-              : 'У этого человека пока нет колонок. Вставьте текст выше или создайте колонку вручную.'}
+              ? t.columns.emptySearch(person.name, searchQuery)
+              : t.columns.emptySections}
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
           {filteredColumns.map((col) => (
             <ColumnCard
               key={col.id}
@@ -396,6 +395,7 @@ export const ColumnsGrid: React.FC<ColumnsGridProps> = ({
               onEditFact={onEditFact}
               onDeleteFact={onDeleteFact}
               onQuickAddFact={onQuickAddFact}
+              onExportDateToCalendar={onExportDateToCalendar}
             />
           ))}
         </div>

@@ -2,12 +2,12 @@ import type { Person } from '../types/notebook';
 import { uid } from '../utils/storage';
 
 export const AVATAR_COLORS = [
-  { id: 'violet', bg: 'linear-gradient(135deg, #7c3aed, #4f46e5)' },
-  { id: 'emerald', bg: 'linear-gradient(135deg, #10b981, #0d9488)' },
-  { id: 'amber', bg: 'linear-gradient(135deg, #f59e0b, #ea580c)' },
-  { id: 'rose', bg: 'linear-gradient(135deg, #f43f5e, #db2777)' },
-  { id: 'sky', bg: 'linear-gradient(135deg, #0ea5e9, #2563eb)' },
-  { id: 'fuchsia', bg: 'linear-gradient(135deg, #c026d3, #7e22ce)' },
+  { id: 'violet', bg: '#3f3f46' },
+  { id: 'emerald', bg: '#2f4f4f' },
+  { id: 'amber', bg: '#78562a' },
+  { id: 'rose', bg: '#7c3f38' },
+  { id: 'sky', bg: '#3b4d61' },
+  { id: 'fuchsia', bg: '#583b5e' },
 ];
 
 export const DEFAULT_GROUPS = ['Семья', 'Друзья', 'Работа', 'Университет'];
@@ -57,7 +57,7 @@ export function createDefaultSampleState(): {
       {
         id: personId,
         name: 'Алина',
-        subtitle: 'Подруга и продакт-дизайнер · Пример вкладки',
+        subtitle: 'Подруга и продакт-дизайнер',
         colorId: 'violet',
         updatedAt: now.toISOString(),
         isPinned: true,

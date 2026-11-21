@@ -3,6 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      try {
+        var savedTheme = localStorage.getItem('smart_people_notebook_theme');
+        if (savedTheme !== 'light' && savedTheme !== 'dark') {
+          savedTheme =
+            window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
+              ? 'light'
+              : 'dark';
+        }
+        document.documentElement.setAttribute('data-theme', savedTheme);
+
+        var savedLang = localStorage.getItem('smart_people_notebook_lang');
+        var resolvedLang = savedLang === 'kk' || savedLang === 'ru' || savedLang === 'en' ? savedLang : '';
+        if (!resolvedLang && navigator) {
+          var langs = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || 'en'];
+          for (var i = 0; i < langs.length; i++) {
+            var code = String(langs[i] || '').toLowerCase().split(/[-_]/)[0];
+            if (code === 'kk' || code === 'kaz') { resolvedLang = 'kk'; break; }
+            if (code === 'ru' || code === 'rus') { resolvedLang = 'ru'; break; }
+            if (code === 'en' || code === 'eng') { resolvedLang = 'en'; break; }
+          }
+        }
+        document.documentElement.setAttribute('lang', resolvedLang || 'en');
+      } catch (e) {}
+    </script>
     <title>Умный блокнот о людях — AI Досье и Таймлайн общения</title>
     <meta
       name="description"
@@ -15,6 +40,13 @@
     />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#111113" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Блокнот" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

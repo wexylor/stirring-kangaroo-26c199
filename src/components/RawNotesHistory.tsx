@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import type { Person } from '../types/notebook';
 import { formatDateTime } from '../utils/storage';
+import { useI18n } from '../utils/LanguageContext';
 
 interface RawNotesHistoryProps {
   person: Person;
@@ -14,56 +15,58 @@ export const RawNotesHistory: React.FC<RawNotesHistoryProps> = ({
   onCopyNote,
   onDeleteNote,
 }) => {
+  const { lang, t } = useI18n();
   const [open, setOpen] = useState(false);
 
   return (
     <section
-      className="rounded-2xl border overflow-hidden"
-      style={{
-        backgroundColor: 'var(--bg-surface)',
-        borderColor: 'var(--border-color)',
-      }}
+      className="pt-5 border-t"
+      style={{ borderColor: 'var(--border-color)' }}
     >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full px-5 py-3.5 flex items-center justify-between text-sm font-semibold text-left hover:opacity-90"
+        className="w-full flex items-center justify-between text-sm font-semibold text-left hover:opacity-80 transition-opacity"
       >
-        <span>🕒 История исходных заметок ({person.rawNotes.length})</span>
-        {open ? <ChevronUp className="w-4 h-4 opacity-70" /> : <ChevronDown className="w-4 h-4 opacity-70" />}
+        <span>
+          {t.rawNotes.title}{' '}
+          <span className="text-xs font-normal tabular-nums" style={{ color: 'var(--text-muted)' }}>
+            {person.rawNotes.length}
+          </span>
+        </span>
+        {open ? (
+          <ChevronUp className="w-3.5 h-3.5" style={{ color: 'var(--text-muted)' }} />
+        ) : (
+          <ChevronDown className="w-3.5 h-3.5" style={{ color: 'var(--text-muted)' }} />
+        )}
       </button>
 
       {open && (
-        <div
-          className="px-5 pb-4 pt-3.5 border-t flex flex-col gap-2.5"
-          style={{ borderColor: 'var(--border-color)' }}
-        >
+        <div className="mt-3 divide-y" style={{ borderColor: 'var(--border-color)' }}>
           {person.rawNotes.length === 0 ? (
-            <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
-              Здесь сохраняются все тексты, которые вы вставляли для анализа.
+            <p className="text-[13px] py-2" style={{ color: 'var(--text-muted)' }}>
+              {t.rawNotes.empty}
             </p>
           ) : (
             person.rawNotes.map((note) => (
               <div
                 key={note.id}
-                className="p-3 rounded-xl border text-[13px]"
-                style={{
-                  backgroundColor: 'var(--bg-input)',
-                  borderColor: 'var(--border-color)',
-                }}
+                className="py-3 text-[13px]"
+                style={{ borderColor: 'var(--border-color)' }}
               >
                 <div
-                  className="flex items-center justify-between text-[11px] mb-1.5"
+                  className="flex items-center justify-between text-[11px] mb-1"
                   style={{ color: 'var(--text-muted)' }}
                 >
-                  <span>Добавлено: {formatDateTime(note.createdAt)}</span>
+                  <span className="tabular-nums">{formatDateTime(note.createdAt, lang)}</span>
                   <div className="flex gap-3">
                     <button
                       type="button"
                       onClick={() => onCopyNote(note.text)}
                       className="hover:underline"
+                      style={{ color: 'var(--text-secondary)' }}
                     >
-                      Копировать
+                      {t.common.copy}
                     </button>
                     <button
                       type="button"
@@ -71,11 +74,11 @@ export const RawNotesHistory: React.FC<RawNotesHistoryProps> = ({
                       className="hover:underline"
                       style={{ color: 'var(--danger-text)' }}
                     >
-                      Удалить
+                      {t.common.delete}
                     </button>
                   </div>
                 </div>
-                <div className="whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>
+                <div className="whitespace-pre-wrap leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
                   {note.text}
                 </div>
               </div>

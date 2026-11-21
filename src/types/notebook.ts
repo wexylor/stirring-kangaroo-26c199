@@ -1,5 +1,11 @@
 export type FactTag = 'fact' | 'ai_inference' | 'updated';
 
+export interface FactHistoryEntry {
+  text: string;
+  changedAt: string;
+  reason?: string;
+}
+
 export interface Fact {
   id: string;
   text: string;
@@ -7,6 +13,7 @@ export interface Fact {
   tag: FactTag;
   reason: string;
   prevText: string;
+  history?: FactHistoryEntry[];
 }
 
 export interface Column {

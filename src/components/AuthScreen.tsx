@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, KeyRound, ArrowLeft } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, ArrowLeft, BookUser, Sun, Moon } from 'lucide-react';
 import {
   getHumanFirebaseAuthError,
   loginWithLoginOrEmail,
   registerWithLoginOrEmail,
   sendPasswordResetForEmail,
 } from '../services/firebase';
+import { useI18n } from '../utils/LanguageContext';
 
 interface AuthScreenProps {
   initialError?: string;
+  theme: 'dark' | 'light';
+  onToggleTheme: () => void;
   onContinueGuest: () => void;
   onToast: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void;
 }
@@ -17,9 +20,12 @@ type AuthViewMode = 'login' | 'register' | 'forgot';
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({
   initialError = '',
+  theme,
+  onToggleTheme,
   onContinueGuest,
   onToast,
 }) => {
+  const { t } = useI18n();
   const [mode, setMode] = useState<AuthViewMode>('login');
   const [displayName, setDisplayName] = useState('');
   const [loginInput, setLoginInput] = useState('');
@@ -52,10 +58,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         await registerWithLoginOrEmail(rawLogin, password, displayName);
         const finalName =
           displayName.trim() || (rawLogin.includes('@') ? rawLogin.split('@')[0] : rawLogin);
-        onToast(`Аккаунт «${finalName}» создан!`, 'success');
+        onToast(t.auth.accountCreatedToast(finalName), 'success');
       } else {
         await loginWithLoginOrEmail(rawLogin, password);
-        onToast('Добро пожаловать в ваш блокнот!', 'success');
+        onToast(t.auth.signedInToast, 'success');
       }
       setPassword('');
       setShowPassword(false);
@@ -79,15 +85,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
     try {
       await sendPasswordResetForEmail(cleanEmail);
-      setResetSuccessMsg(
-        `Письмо со ссылкой для сброса пароля отправлено на ${cleanEmail}. Проверьте входящие и папку «Спам».`
-      );
-      onToast('Письмо для сброса пароля отправлено', 'success');
+      setResetSuccessMsg(t.auth.resetSentMessage(cleanEmail));
+      onToast(t.auth.resetSentToast, 'success');
     } catch (err) {
-      if (
-        err instanceof Error &&
-        !('code' in err)
-      ) {
+      if (err instanceof Error && !('code' in err)) {
         setErrorMsg(err.message);
       } else {
         setErrorMsg(getHumanFirebaseAuthError(err));
@@ -98,67 +99,86 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-6">
+    <div className="min-h-screen flex items-center justify-center px-4 py-8">
       <div
-        className="w-full max-w-[430px] rounded-[22px] p-6 sm:p-7 border shadow-2xl animate-pop-in"
+        className="w-full max-w-[400px] rounded-xl p-6 sm:p-7 border animate-pop-in"
         style={{
           backgroundColor: 'var(--bg-surface)',
           borderColor: 'var(--border-color)',
         }}
       >
-        <div className="flex flex-col items-center text-center mb-5">
-          <div
-            className="w-13 h-13 rounded-[15px] text-white flex items-center justify-center text-2xl mb-3 shadow-lg"
-            style={{ background: 'var(--accent-gradient)' }}
-            aria-hidden="true"
-          >
-            🧠
+        <div className="mb-5">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <BookUser className="w-5 h-5 shrink-0" style={{ color: 'var(--text-secondary)' }} />
+              <span
+                className="font-display text-sm font-semibold tracking-tight truncate"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                {t.auth.brand}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={onToggleTheme}
+              aria-label={theme === 'dark' ? t.sidebar.lightTheme : t.sidebar.darkTheme}
+              title={theme === 'dark' ? t.sidebar.lightTheme : t.sidebar.darkTheme}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-medium shrink-0 transition-colors hover:bg-[var(--bg-hover)]"
+              style={{
+                backgroundColor: 'var(--bg-elevated)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              {theme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+              <span>{theme === 'dark' ? t.sidebar.lightTheme : t.sidebar.darkTheme}</span>
+            </button>
           </div>
-          <h1 className="text-xl font-bold tracking-tight">Умный блокнот о людях</h1>
-          <p className="text-[13px] mt-1 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+          <h1 className="font-display text-xl font-semibold tracking-tight">
             {mode === 'forgot'
-              ? 'Восстановление доступа к вашему облачному блокноту'
-              : 'Войдите в свой аккаунт, чтобы открыть личный блокнот на ноутбуке или телефоне'}
+              ? t.auth.titleForgot
+              : mode === 'register'
+              ? t.auth.titleRegister
+              : t.auth.titleLogin}
+          </h1>
+          <p className="text-[13px] mt-1 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+            {mode === 'forgot' ? t.auth.subForgot : t.auth.subSync}
           </p>
         </div>
 
         {mode !== 'forgot' && (
           <div
-            className="grid grid-cols-2 gap-1.5 p-1 rounded-xl mb-4"
+            className="grid grid-cols-2 gap-1 p-1 rounded-lg mb-4"
             style={{ backgroundColor: 'var(--bg-elevated)' }}
           >
             <button
               type="button"
               onClick={() => switchMode('login')}
-              className={`py-2 px-3 rounded-lg text-[13px] font-semibold transition-all ${
-                mode === 'login' ? 'shadow-sm' : ''
-              }`}
+              className="py-1.5 px-3 rounded-md text-[13px] font-medium transition-colors"
               style={{
                 backgroundColor: mode === 'login' ? 'var(--bg-surface)' : 'transparent',
                 color: mode === 'login' ? 'var(--text-primary)' : 'var(--text-secondary)',
               }}
             >
-              Вход в аккаунт
+              {t.auth.tabLogin}
             </button>
             <button
               type="button"
               onClick={() => switchMode('register')}
-              className={`py-2 px-3 rounded-lg text-[13px] font-semibold transition-all ${
-                mode === 'register' ? 'shadow-sm' : ''
-              }`}
+              className="py-1.5 px-3 rounded-md text-[13px] font-medium transition-colors"
               style={{
                 backgroundColor: mode === 'register' ? 'var(--bg-surface)' : 'transparent',
                 color: mode === 'register' ? 'var(--text-primary)' : 'var(--text-secondary)',
               }}
             >
-              Создать аккаунт
+              {t.auth.tabRegister}
             </button>
           </div>
         )}
 
         {errorMsg && (
           <div
-            className="p-3 rounded-xl text-[12.5px] leading-relaxed mb-3.5 border break-words"
+            className="p-3 rounded-lg text-[12.5px] leading-relaxed mb-3.5 border break-words"
             role="alert"
             style={{
               backgroundColor: 'var(--danger-bg)',
@@ -172,7 +192,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
         {resetSuccessMsg && (
           <div
-            className="p-3 rounded-xl text-[12.5px] leading-relaxed mb-3.5 border"
+            className="p-3 rounded-lg text-[12.5px] leading-relaxed mb-3.5 border"
             role="status"
             style={{
               backgroundColor: 'var(--success-bg)',
@@ -189,10 +209,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             <div>
               <label
                 htmlFor="resetEmailInput"
-                className="block text-xs font-semibold mb-1.5"
+                className="block text-xs font-medium mb-1.5"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                Привязанный Email *
+                {t.auth.emailResetLabel}
               </label>
               <input
                 id="resetEmailInput"
@@ -200,32 +220,32 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 required
                 value={resetEmail}
                 onChange={(e) => setResetEmail(e.target.value)}
-                placeholder="name@example.com"
-                className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none focus:ring-2 focus:ring-violet-500/30"
+                placeholder={t.auth.emailResetPlaceholder}
+                className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
                 style={{
                   backgroundColor: 'var(--bg-input)',
                   borderColor: 'var(--border-color)',
                 }}
               />
-              <p className="text-[11.5px] mt-1.5 leading-snug" style={{ color: 'var(--text-muted)' }}>
-                Если вы регистрировались по короткому логину без почты, предварительно привяжите реальный Email в настройках аккаунта.
-              </p>
             </div>
 
             <button
               type="submit"
               disabled={submitting}
-              className="w-full py-2.5 px-4 rounded-xl text-[13px] font-semibold text-white flex items-center justify-center gap-2 transition-all hover:brightness-110 disabled:opacity-60"
-              style={{ background: 'var(--accent-gradient)' }}
+              className="w-full py-2 px-4 rounded-lg text-[13px] font-medium flex items-center justify-center gap-2 transition-opacity hover:opacity-90 disabled:opacity-60"
+              style={{
+                backgroundColor: 'var(--btn-primary-bg)',
+                color: 'var(--btn-primary-text)',
+              }}
             >
               <KeyRound className="w-4 h-4" />
-              <span>{submitting ? 'Отправка письма...' : 'Отправить ссылку для сброса'}</span>
+              <span>{submitting ? t.auth.sending : t.auth.sendLink}</span>
             </button>
 
             <button
               type="button"
               onClick={() => switchMode('login')}
-              className="w-full py-2.5 px-4 rounded-xl text-[13px] font-semibold border flex items-center justify-center gap-2 transition-colors"
+              className="w-full py-2 px-4 rounded-lg text-[13px] font-medium border flex items-center justify-center gap-2 transition-colors hover:bg-[var(--bg-hover)]"
               style={{
                 backgroundColor: 'var(--bg-elevated)',
                 borderColor: 'var(--border-color)',
@@ -233,7 +253,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               }}
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>Вернуться ко входу</span>
+              <span>{t.auth.backToLogin}</span>
             </button>
           </form>
         ) : (
@@ -242,10 +262,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               <div>
                 <label
                   htmlFor="authDisplayNameInput"
-                  className="block text-xs font-semibold mb-1.5"
+                  className="block text-xs font-medium mb-1.5"
                   style={{ color: 'var(--text-secondary)' }}
                 >
-                  Ваше имя (как отображать в шапке)
+                  {t.auth.nameLabel}
                 </label>
                 <input
                   id="authDisplayNameInput"
@@ -253,8 +273,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   maxLength={40}
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="Например: Арыс"
-                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none focus:ring-2 focus:ring-violet-500/30"
+                  placeholder={t.auth.namePlaceholder}
+                  className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
                   style={{
                     backgroundColor: 'var(--bg-input)',
                     borderColor: 'var(--border-color)',
@@ -266,10 +286,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             <div>
               <label
                 htmlFor="authLoginInput"
-                className="block text-xs font-semibold mb-1.5"
+                className="block text-xs font-medium mb-1.5"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                Логин или Email *
+                {t.auth.loginLabel}
               </label>
               <input
                 id="authLoginInput"
@@ -278,26 +298,23 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 autoComplete="username"
                 value={loginInput}
                 onChange={(e) => setLoginInput(e.target.value)}
-                placeholder="Например: arys или arys@mail.com"
-                className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none focus:ring-2 focus:ring-violet-500/30"
+                placeholder={t.auth.loginPlaceholder}
+                className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
                 style={{
                   backgroundColor: 'var(--bg-input)',
                   borderColor: 'var(--border-color)',
                 }}
               />
-              <p className="text-[11.5px] mt-1 leading-snug" style={{ color: 'var(--text-muted)' }}>
-                Можно придумать короткий логин либо указать Email (нужен для восстановления пароля).
-              </p>
             </div>
 
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label
                   htmlFor="authPasswordInput"
-                  className="block text-xs font-semibold"
+                  className="block text-xs font-medium"
                   style={{ color: 'var(--text-secondary)' }}
                 >
-                  Пароль *
+                  {t.auth.passwordLabel}
                 </label>
                 {mode === 'login' && (
                   <button
@@ -306,10 +323,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                       if (loginInput.includes('@')) setResetEmail(loginInput.trim());
                       switchMode('forgot');
                     }}
-                    className="text-xs font-semibold hover:underline"
-                    style={{ color: 'var(--accent-text)' }}
+                    className="text-xs hover:underline"
+                    style={{ color: 'var(--text-secondary)' }}
                   >
-                    Забыли пароль?
+                    {t.auth.forgotQuestion}
                   </button>
                 )}
               </div>
@@ -322,8 +339,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Минимум 6 символов"
-                  className="w-full pl-3 pr-10 py-2.5 rounded-xl border text-sm outline-none focus:ring-2 focus:ring-violet-500/30"
+                  placeholder={t.auth.passwordPlaceholder}
+                  className="w-full pl-3 pr-10 py-2 rounded-lg border text-sm outline-none"
                   style={{
                     backgroundColor: 'var(--bg-input)',
                     borderColor: 'var(--border-color)',
@@ -332,10 +349,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
-                  aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+                  aria-label={showPassword ? t.auth.hidePassword : t.auth.showPassword}
                   aria-pressed={showPassword}
-                  title={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
-                  className="absolute right-1.5 w-8 h-8 rounded-full inline-flex items-center justify-center transition-colors hover:opacity-80"
+                  className="absolute right-1.5 w-7 h-7 rounded-md inline-flex items-center justify-center hover:bg-[var(--bg-hover)]"
                   style={{ color: 'var(--text-secondary)' }}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -346,37 +362,40 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             <button
               type="submit"
               disabled={submitting}
-              className="w-full py-2.5 px-4 rounded-xl text-[13px] font-semibold text-white transition-all hover:brightness-110 disabled:opacity-60"
-              style={{ background: 'var(--accent-gradient)' }}
+              className="w-full py-2 px-4 rounded-lg text-[13px] font-medium transition-opacity hover:opacity-90 disabled:opacity-60"
+              style={{
+                backgroundColor: 'var(--btn-primary-bg)',
+                color: 'var(--btn-primary-text)',
+              }}
             >
               {submitting
                 ? mode === 'register'
-                  ? 'Создаём аккаунт...'
-                  : 'Входим...'
+                  ? t.auth.submittingRegister
+                  : t.auth.submittingLogin
                 : mode === 'register'
-                ? 'Создать мой аккаунт'
-                : 'Войти в мой блокнот'}
+                ? t.auth.createAccount
+                : t.auth.signIn}
             </button>
           </form>
         )}
 
         <div className="flex items-center gap-2.5 my-4 text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
           <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border-color)' }} />
-          <span>или</span>
+          <span>{t.common.or}</span>
           <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border-color)' }} />
         </div>
 
         <button
           type="button"
           onClick={onContinueGuest}
-          className="w-full py-2.5 px-4 rounded-xl text-[12.5px] font-semibold border transition-colors hover:brightness-105"
+          className="w-full py-2 px-4 rounded-lg text-[12.5px] font-medium border transition-colors hover:bg-[var(--bg-hover)]"
           style={{
             backgroundColor: 'var(--bg-elevated)',
             borderColor: 'var(--border-color)',
             color: 'var(--text-primary)',
           }}
         >
-          Продолжить локально на этом устройстве (без облака)
+          {t.auth.continueGuest}
         </button>
       </div>
     </div>

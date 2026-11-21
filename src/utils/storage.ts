@@ -1,4 +1,5 @@
 import type { MeetingEntry, Person } from '../types/notebook';
+import type { AppLang } from './preferences';
 
 const memoryStore = new Map<string, string>();
 let persistentAvailable = false;
@@ -54,6 +55,7 @@ export const STORAGE_TAB_PREFIX = 'smart_people_notebook_tab_v6_';
 export const STORAGE_PENDING_PREFIX = 'smart_people_notebook_pending_v1_';
 export const STORAGE_API_KEY = 'smart_people_notebook_gemini_key';
 export const STORAGE_THEME_KEY = 'smart_people_notebook_theme';
+export const STORAGE_LANG_KEY = 'smart_people_notebook_lang';
 
 export function uid(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
@@ -69,28 +71,74 @@ export function getInitials(name: string): string {
   return clean.slice(0, 2).toUpperCase();
 }
 
-export function formatDateTime(isoStr?: string): string {
-  if (!isoStr) return 'только что';
+function resolveIntlLocale(lang: AppLang): string {
+  if (lang === 'kk') return 'kk-KZ';
+  if (lang === 'en') return 'en-US';
+  return 'ru-RU';
+}
+
+const KK_MONTHS_SHORT = [
+  'қаң',
+  'ақп',
+  'нау',
+  'сәу',
+  'мам',
+  'мау',
+  'шіл',
+  'там',
+  'қыр',
+  'қаз',
+  'қар',
+  'жел',
+];
+
+const KK_MONTHS_LONG = [
+  'қаңтар',
+  'ақпан',
+  'наурыз',
+  'сәуір',
+  'мамыр',
+  'маусым',
+  'шілде',
+  'тамыз',
+  'қыркүйек',
+  'қазан',
+  'қараша',
+  'желтоқсан',
+];
+
+export function formatDateTime(isoStr?: string, lang: AppLang = 'ru'): string {
+  const justNow = lang === 'kk' ? 'жаңа ғана' : lang === 'en' ? 'just now' : 'только что';
+  const recently = lang === 'kk' ? 'жақында' : lang === 'en' ? 'recently' : 'недавно';
+  if (!isoStr) return justNow;
   try {
     const d = new Date(isoStr);
-    if (Number.isNaN(d.getTime())) return 'недавно';
-    return d.toLocaleString('ru-RU', {
+    if (Number.isNaN(d.getTime())) return recently;
+    if (lang === 'kk') {
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      return `${d.getDate()} ${KK_MONTHS_SHORT[d.getMonth()]}, ${hh}:${mm}`;
+    }
+    return d.toLocaleString(resolveIntlLocale(lang), {
       day: 'numeric',
       month: 'short',
       hour: '2-digit',
       minute: '2-digit',
     });
   } catch {
-    return 'недавно';
+    return recently;
   }
 }
 
-export function formatShortDate(dateStr: string): string {
+export function formatShortDate(dateStr: string, lang: AppLang = 'ru'): string {
   if (!dateStr) return '';
   try {
     const d = new Date(dateStr.length === 10 ? `${dateStr}T12:00:00` : dateStr);
     if (Number.isNaN(d.getTime())) return dateStr;
-    return d.toLocaleDateString('ru-RU', {
+    if (lang === 'kk') {
+      return `${d.getDate()} ${KK_MONTHS_LONG[d.getMonth()]} ${d.getFullYear()} ж.`;
+    }
+    return d.toLocaleDateString(resolveIntlLocale(lang), {
       day: 'numeric',
       month: 'long',
       year: 'numeric',
@@ -213,17 +261,42 @@ export function normalizePeople(rawList: unknown): Person[] {
           tag?: string;
           reason?: string;
           prevText?: string;
-        }>(c.facts).map((f) => ({
-          id: f.id || uid('fact'),
-          text: f.text || '',
-          isNew: Boolean(f.isNew),
-          tag:
-            f.tag === 'ai_inference' || f.tag === 'updated'
-              ? f.tag
-              : 'fact',
-          reason: f.reason || '',
-          prevText: f.prevText || '',
-        })),
+          history?: unknown;
+        }>(c.facts).map((f) => {
+          const prevText = f.prevText || '';
+          const rawHistory = toArray<{
+            text?: string;
+            changedAt?: string;
+            reason?: string;
+          }>(f.history)
+            .filter((h) => h && typeof h.text === 'string' && h.text.trim())
+            .map((h) => ({
+              text: h.text!.trim(),
+              changedAt: h.changedAt || updatedAt,
+              reason: h.reason || undefined,
+            }));
+
+          if (rawHistory.length === 0 && prevText.trim()) {
+            rawHistory.push({
+              text: prevText.trim(),
+              changedAt: updatedAt,
+              reason: f.reason || undefined,
+            });
+          }
+
+          return {
+            id: f.id || uid('fact'),
+            text: f.text || '',
+            isNew: Boolean(f.isNew),
+            tag:
+              f.tag === 'ai_inference' || f.tag === 'updated'
+                ? f.tag
+                : 'fact',
+            reason: f.reason || '',
+            prevText,
+            history: rawHistory.length > 0 ? rawHistory : undefined,
+          };
+        }),
       })),
       rawNotes,
       meetings,

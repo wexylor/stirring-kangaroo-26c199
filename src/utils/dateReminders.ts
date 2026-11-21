@@ -1,42 +1,46 @@
 import type { Person, UpcomingDateReminder } from '../types/notebook';
+import type { AppLang } from './preferences';
 
-const MONTHS_GENITIVE: Record<string, number> = {
-  января: 1,
-  январь: 1,
-  янв: 1,
-  февраля: 2,
-  февраль: 2,
-  фев: 2,
-  марта: 3,
-  март: 3,
-  мар: 3,
-  апреля: 4,
-  апрель: 4,
-  апр: 4,
-  мая: 5,
-  май: 5,
-  июня: 6,
-  июнь: 6,
-  июн: 6,
-  июля: 7,
-  июль: 7,
-  июл: 7,
-  августа: 8,
-  август: 8,
-  авг: 8,
-  сентября: 9,
-  сентябрь: 9,
-  сен: 9,
-  сент: 9,
-  октября: 10,
-  октябрь: 10,
-  окт: 10,
-  ноября: 11,
-  ноябрь: 11,
-  ноя: 11,
-  декабря: 12,
-  декабрь: 12,
-  дек: 12,
+const MONTHS_BY_NAME: Record<string, number> = {
+  // Russian
+  января: 1, январь: 1, янв: 1,
+  февраля: 2, февраль: 2, фев: 2,
+  марта: 3, март: 3, мар: 3,
+  апреля: 4, апрель: 4, апр: 4,
+  мая: 5, май: 5,
+  июня: 6, июнь: 6, июн: 6,
+  июля: 7, июль: 7, июл: 7,
+  августа: 8, август: 8, авг: 8,
+  сентября: 9, сентябрь: 9, сен: 9, сент: 9,
+  октября: 10, октябрь: 10, окт: 10,
+  ноября: 11, ноябрь: 11, ноя: 11,
+  декабря: 12, декабрь: 12, дек: 12,
+  // Kazakh
+  қаңтар: 1, қаңтарда: 1, қаң: 1,
+  ақпан: 2, ақпанда: 2, ақп: 2,
+  наурыз: 3, наурызда: 3, нау: 3,
+  сәуір: 4, сәуірде: 4, сәу: 4,
+  мамыр: 5, мамырда: 5, мам: 5,
+  маусым: 6, маусымда: 6, мау: 6,
+  шілде: 7, шілдеде: 7, шіл: 7,
+  тамыз: 8, тамызда: 8, там: 8,
+  қыркүйек: 9, қыркүйекте: 9, қыр: 9,
+  қазан: 10, қазанда: 10, қаз: 10,
+  қараша: 11, қарашада: 11, қар: 11,
+  желтоқсан: 12, желтоқсанда: 12, жел: 12,
+  // English
+  january: 1, jan: 1,
+  february: 2, feb: 2,
+  march: 3, mar: 3,
+  april: 4, apr: 4,
+  may: 5,
+  june: 6, jun: 6,
+  july: 7, jul: 7,
+  august: 8, aug: 8,
+  september: 9, sept: 9, sep: 9,
+  october: 10, oct: 10,
+  november: 11, nov: 11,
+  december: 12, dec: 12,
 };
 
 const MONTH_LABELS = [
@@ -65,42 +69,67 @@ function isValidDayMonth(day: number, month: number): boolean {
   return day <= maxDays[month - 1];
 }
 
-export function parseRussianDatesFromText(text: string): ParsedDateMatch[] {
-  const results: ParsedDateMatch[] = [];
-  const seen = new Set<string>();
+const MONTH_PATTERN = Object.keys(MONTHS_BY_NAME)
+  .sort((a, b) => b.length - a.length)
+  .join('|');
+
+export function parseDatesFromText(text: string): ParsedDateMatch[] {
+  const rawMatches: Array<{ index: number; day: number; month: number }> = [];
   const source = String(text || '').toLowerCase();
 
-  // 1. Named Russian months: "14 октября", "5 мая", "24 ноя"
-  const namedRx =
-    /(?:^|[^\d])(\d{1,2})\s+(января|январь|янв|февраля|февраль|фев|марта|март|мар|апреля|апрель|апр|мая|май|июня|июнь|июн|июля|июль|июл|августа|август|авг|сентября|сентябрь|сен|сент|октября|октябрь|окт|ноября|ноябрь|ноя|декабря|декабрь|дек)(?![а-яё])/gi;
+  // 1. Named day + month: "14 октября", "25 қараша", "25 November"
+  const dayFirstRx = new RegExp(
+    `(?:^|[^\\d])(\\d{1,2})\\s+(${MONTH_PATTERN})(?![а-яёәғқңөұүһіa-z])`,
+    'gi'
+  );
   let m: RegExpExecArray | null;
-  while ((m = namedRx.exec(source)) !== null) {
+  while ((m = dayFirstRx.exec(source)) !== null) {
     const day = Number(m[1]);
-    const month = MONTHS_GENITIVE[m[2].toLowerCase()];
+    const month = MONTHS_BY_NAME[m[2].toLowerCase()];
     if (month && isValidDayMonth(day, month)) {
-      const key = `${day}.${month}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        results.push({ day, month });
-      }
+      rawMatches.push({ index: m.index, day, month });
     }
   }
 
-  // 2. Numeric DD.MM or DD.MM.YYYY or DD/MM
+  // 2. Named English month + day: "November 25", "Nov 25th"
+  const monthFirstRx = new RegExp(
+    `(?:^|[^а-яёәғқңөұүһіa-z])(${MONTH_PATTERN})\\s+(\\d{1,2})(?:st|nd|rd|th)?(?=$|[^\\d])`,
+    'gi'
+  );
+  while ((m = monthFirstRx.exec(source)) !== null) {
+    const month = MONTHS_BY_NAME[m[1].toLowerCase()];
+    const day = Number(m[2]);
+    if (month && isValidDayMonth(day, month)) {
+      rawMatches.push({ index: m.index, day, month });
+    }
+  }
+
+  // 3. Numeric DD.MM or DD.MM.YYYY or DD/MM
   const numericRx = /(?:^|[^\d])(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?(?=$|[^\d])/g;
   while ((m = numericRx.exec(source)) !== null) {
     const day = Number(m[1]);
     const month = Number(m[2]);
     if (isValidDayMonth(day, month)) {
-      const key = `${day}.${month}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        results.push({ day, month });
-      }
+      rawMatches.push({ index: m.index, day, month });
+    }
+  }
+
+  rawMatches.sort((a, b) => a.index - b.index);
+  const results: ParsedDateMatch[] = [];
+  const seen = new Set<string>();
+  for (const item of rawMatches) {
+    const key = `${item.day}.${item.month}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      results.push({ day: item.day, month: item.month });
     }
   }
 
   return results;
+}
+
+export function parseRussianDatesFromText(text: string): ParsedDateMatch[] {
+  return parseDatesFromText(text);
 }
 
 export function computeDaysUntilNextOccurrence(
@@ -133,7 +162,9 @@ export function computeDaysUntilNextOccurrence(
 
 export function isBirthdayFact(columnTitle: string, factText: string): boolean {
   const combined = `${columnTitle} ${factText}`.toLowerCase();
-  return /(?:день\s+рожден|\bдр\b|именин|рожден|birthday|д\.р\.)/i.test(combined);
+  return /(?:день\s+рожден|\bдр\b|именин|рожден|birthday|bday|д\.р\.|туған\s+күн)/i.test(
+    combined
+  );
 }
 
 export function getUpcomingReminders(
@@ -152,17 +183,22 @@ export function getUpcomingReminders(
         lowCol.includes('дат') ||
         lowCol.includes('рожден') ||
         lowCol.includes('празд') ||
-        lowCol.includes('годовщин');
+        lowCol.includes('годовщин') ||
+        lowCol.includes('туған') ||
+        lowCol.includes('күндер') ||
+        lowCol.includes('date') ||
+        lowCol.includes('birthday') ||
+        lowCol.includes('anniversary');
 
       for (const fact of col.facts) {
         const hasEventKeyword =
           isDateColumn ||
-          /(?:день\s+рожден|\bдр\b|годовщин|юбиле|праздник|свадьб|именин)/i.test(
+          /(?:день\s+рожден|\bдр\b|годовщин|юбиле|праздник|свадьб|именин|туған\s+күн|мерейтой|үйлену|birthday|anniversary|wedding)/i.test(
             fact.text
           );
         if (!hasEventKeyword) continue;
 
-        const matches = parseRussianDatesFromText(fact.text);
+        const matches = parseDatesFromText(fact.text);
         for (const match of matches) {
           const daysUntil = computeDaysUntilNextOccurrence(
             match.day,
@@ -224,4 +260,11 @@ export function formatDaysRussian(days: number): string {
   if (mod10 === 1) return `${abs} день`;
   if (mod10 >= 2 && mod10 <= 4) return `${abs} дня`;
   return `${abs} дней`;
+}
+
+export function formatDaysForLang(days: number, lang: AppLang = 'ru'): string {
+  const abs = Math.abs(Math.floor(days));
+  if (lang === 'kk') return `${abs} күн`;
+  if (lang === 'en') return abs === 1 ? '1 day' : `${abs} days`;
+  return formatDaysRussian(days);
 }

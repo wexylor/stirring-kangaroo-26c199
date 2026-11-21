@@ -1,14 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { User } from '@firebase/auth';
-import { X } from 'lucide-react';
+import { Menu, Plus, X, Sun, Moon } from 'lucide-react';
 import type {
   AnalysisReport,
   CloudSyncStatus,
   DossierData,
+  FactHistoryEntry,
   MeetingEntry,
   MeetingType,
   Person,
   ToastItem,
+  UpcomingDateReminder,
 } from './types/notebook';
 import {
   computeLatestContactIso,
@@ -17,11 +19,20 @@ import {
   safeStorage,
   STORAGE_API_KEY,
   STORAGE_DATA_PREFIX,
+  STORAGE_LANG_KEY,
   STORAGE_PENDING_PREFIX,
   STORAGE_TAB_PREFIX,
   STORAGE_THEME_KEY,
   uid,
 } from './utils/storage';
+import {
+  detectDeviceLanguage,
+  detectDeviceTheme,
+  type AppLang,
+  type AppTheme,
+} from './utils/preferences';
+import { LanguageProvider } from './utils/LanguageContext';
+import { getTranslations } from './utils/i18n';
 import {
   analyzeTextLocally,
   buildDossierLocally,
@@ -31,6 +42,11 @@ import {
   type AnalysisResultPayload,
 } from './utils/semantics';
 import { getUpcomingReminders } from './utils/dateReminders';
+import {
+  downloadIcsEvent,
+  extractExportableDateFromFact,
+  isAnnualEventFact,
+} from './utils/calendarExport';
 import { createDefaultSampleState, DEMO_SAMPLE_TEXT } from './data/sampleData';
 import {
   deletePersonFromCloud,
@@ -51,13 +67,13 @@ import {
   formatGeminiFallbackReason,
 } from './services/gemini';
 import { AuthScreen } from './components/AuthScreen';
-import { Header } from './components/Header';
-import { UpcomingRemindersBar } from './components/UpcomingRemindersBar';
+import { Sidebar } from './components/Sidebar';
 import { ProfileCard } from './components/ProfileCard';
 import { AnalyzerCard } from './components/AnalyzerCard';
 import { ColumnsGrid } from './components/ColumnsGrid';
 import { MeetingsTimeline } from './components/MeetingsTimeline';
 import { RawNotesHistory } from './components/RawNotesHistory';
+import { OfflineIndicator } from './components/PWAInstallButton';
 import {
   AccountModal,
   AddColumnModal,
@@ -106,10 +122,20 @@ export default function App() {
     return false;
   });
 
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+  const [theme, setTheme] = useState<AppTheme>(() =>
+    detectDeviceTheme(safeStorage.getItem(STORAGE_THEME_KEY))
+  );
+  const [hasManualTheme, setHasManualTheme] = useState<boolean>(() => {
     const saved = safeStorage.getItem(STORAGE_THEME_KEY);
-    return saved === 'light' ? 'light' : 'dark';
+    return saved === 'light' || saved === 'dark';
   });
+
+  const [lang, setLang] = useState<AppLang>(() =>
+    detectDeviceLanguage(safeStorage.getItem(STORAGE_LANG_KEY))
+  );
+  const t = useMemo(() => getTranslations(lang), [lang]);
+  const tRef = useRef(t);
+  tRef.current = t;
 
   const [people, setPeople] = useState<Person[]>([]);
   const [activePersonId, setActivePersonId] = useState<string | null>(null);
@@ -138,6 +164,7 @@ export default function App() {
   const [addColumnOpen, setAddColumnOpen] = useState(false);
   const [addMeetingOpen, setAddMeetingOpen] = useState(false);
   const [apiSettingsOpen, setApiSettingsOpen] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [confirmState, setConfirmState] = useState<{
     open: boolean;
     title: string;
@@ -169,9 +196,42 @@ export default function App() {
   );
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    safeStorage.setItem(STORAGE_THEME_KEY, theme);
+    const root = document.documentElement;
+    root.classList.add('theme-switching');
+    root.setAttribute('data-theme', theme);
+    void root.offsetHeight;
+    root.classList.remove('theme-switching');
   }, [theme]);
+
+  useEffect(() => {
+    if (hasManualTheme || typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return;
+    }
+    const mq = window.matchMedia('(prefers-color-scheme: light)');
+    const handleChange = (e: MediaQueryListEvent) => {
+      setTheme(e.matches ? 'light' : 'dark');
+    };
+    mq.addEventListener('change', handleChange);
+    return () => mq.removeEventListener('change', handleChange);
+  }, [hasManualTheme]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('lang', lang);
+  }, [lang]);
+
+  const handleToggleTheme = useCallback(() => {
+    setTheme((prev) => {
+      const next: AppTheme = prev === 'dark' ? 'light' : 'dark';
+      setHasManualTheme(true);
+      safeStorage.setItem(STORAGE_THEME_KEY, next);
+      return next;
+    });
+  }, []);
+
+  const handleChangeLanguage = useCallback((nextLang: AppLang) => {
+    setLang(nextLang);
+    safeStorage.setItem(STORAGE_LANG_KEY, nextLang);
+  }, []);
 
   const currentScope = currentUser?.uid || 'guest';
 
@@ -264,10 +324,7 @@ export default function App() {
           return next;
         });
         setCloudStatus('error');
-        showToast(
-          'Изменения сохранены локально. Нажмите «Синхронизировать сейчас», когда появится связь.',
-          'warning'
-        );
+        showToast(tRef.current.toasts.syncLocalNotice, 'warning');
       }
     },
     [showToast]
@@ -299,10 +356,7 @@ export default function App() {
           return next;
         });
         setCloudStatus('error');
-        showToast(
-          'Удаление сохранено локально и ожидает синхронизации.',
-          'warning'
-        );
+        showToast(tRef.current.toasts.deleteLocalNotice, 'warning');
       }
     },
     [showToast]
@@ -337,10 +391,10 @@ export default function App() {
       setPendingQueue(emptyQ);
       writePendingQueue(uidStr, emptyQ);
       setCloudStatus('online');
-      showToast('Синхронизация с облаком выполнена успешно!', 'success');
+      showToast(tRef.current.toasts.syncSuccess, 'success');
     } catch {
       setCloudStatus('error');
-      showToast('Не удалось синхронизироваться с облаком. Проверьте интернет.', 'error');
+      showToast(tRef.current.toasts.syncError, 'error');
     } finally {
       setIsSyncing(false);
     }
@@ -515,7 +569,7 @@ export default function App() {
     const newPerson: Person = {
       id: uid('person'),
       name,
-      subtitle: subtitle || 'Личная карточка',
+      subtitle: subtitle || t.common.personalCard,
       colorId,
       group,
       isPinned: false,
@@ -543,15 +597,14 @@ export default function App() {
       pushPersonUpdate(newPerson, currentUser.uid);
     }
     setAddPersonOpen(false);
-    showToast(`Вкладка «${name}» создана`, 'success');
+    showToast(t.toasts.tabCreated(name), 'success');
   };
 
   const handleDeletePerson = (person: Person) => {
     setConfirmState({
       open: true,
-      title: `Удалить вкладку «${person.name}»?`,
-      message:
-        'Все колонки, факты, таймлайн встреч и история заметок этого человека будут удалены из вашего аккаунта.',
+      title: t.toasts.deleteTabTitle(person.name),
+      message: t.toasts.deleteTabMsg,
       onConfirm: () => {
         const nextPeople = people.filter((p) => p.id !== person.id);
         const nextActive = nextPeople[0]?.id || null;
@@ -563,7 +616,7 @@ export default function App() {
         if (currentUser) {
           pushPersonDelete(person.id, currentUser.uid);
         }
-        showToast(`Вкладка «${person.name}» удалена`, 'info');
+        showToast(t.toasts.tabDeleted(person.name), 'info');
       },
     });
   };
@@ -575,7 +628,7 @@ export default function App() {
         (c) => c.title.toLowerCase() === title.toLowerCase()
       )
     ) {
-      showToast('Колонка с таким названием уже есть', 'warning');
+      showToast(t.toasts.colExists, 'warning');
       return;
     }
 
@@ -588,7 +641,7 @@ export default function App() {
       ],
     }));
     setAddColumnOpen(false);
-    showToast(`Колонка «${title}» добавлена`, 'success');
+    showToast(t.toasts.colAdded(title), 'success');
   };
 
   const handleAddMeeting = (date: string, type: MeetingType, summary: string) => {
@@ -619,7 +672,7 @@ export default function App() {
       };
     });
     setAddMeetingOpen(false);
-    showToast('Встреча/контакт записаны в таймлайн', 'success');
+    showToast(t.toasts.meetingSaved, 'success');
   };
 
   const handleDeleteMeeting = (meetingId: string) => {
@@ -637,14 +690,14 @@ export default function App() {
         }),
       };
     });
-    showToast('Запись удалена из таймлайна', 'info');
+    showToast(t.toasts.meetingDeleted, 'info');
   };
 
   const handleAnalyzeText = async () => {
     if (!activePerson || isAnalyzing) return;
     const rawText = draftText.trim();
     if (!rawText) {
-      showToast('Введите или вставьте текст для анализа', 'warning');
+      showToast(t.toasts.enterText, 'warning');
       return;
     }
 
@@ -666,18 +719,19 @@ export default function App() {
       engineUsed = 'gemini';
     } catch (err) {
       engineUsed = 'local';
-      const reasonMsg = formatGeminiFallbackReason(err);
+      const reasonMsg = formatGeminiFallbackReason(err, lang);
       // Show explicit fallback toast if user expected Gemini (had API key or hit network/timeout)
       if (err instanceof Error && err.message !== 'NO_API_KEY') {
         usedFallback = true;
         fallbackReason = reasonMsg;
         showToast(reasonMsg, 'warning');
       }
-      result = analyzeTextLocally(activePerson, rawText, people);
+      result = analyzeTextLocally(activePerson, rawText, people, lang);
     }
 
     setActiveEngine(engineUsed);
 
+    const nowIso = new Date().toISOString();
     const updatedPerson: Person = JSON.parse(JSON.stringify(activePerson));
     updatedPerson.columns.forEach((col) => {
       col.isNew = false;
@@ -747,13 +801,38 @@ export default function App() {
               duplicatesSkipped++;
               return;
             }
+            const nextReason =
+              reasonStr ||
+              (relation.type === 'enrich' ? t.toasts.enrichedReason : t.toasts.updatedReason);
+            const prevHistory: FactHistoryEntry[] = Array.isArray(relation.fact.history)
+              ? [...relation.fact.history]
+              : relation.fact.prevText
+              ? [
+                  {
+                    text: relation.fact.prevText,
+                    changedAt: updatedPerson.updatedAt || nowIso,
+                    reason: relation.fact.reason || undefined,
+                  },
+                ]
+              : [];
+            if (
+              prevHistory.length === 0 ||
+              prevHistory[prevHistory.length - 1].text.trim().toLowerCase() !==
+                oldSnapshotText.trim().toLowerCase()
+            ) {
+              prevHistory.push({
+                text: oldSnapshotText,
+                changedAt: nowIso,
+                reason: nextReason,
+              });
+            }
+
             relation.fact.text = cleanFact;
             relation.fact.isNew = true;
             relation.fact.tag = 'updated';
             relation.fact.prevText = oldSnapshotText;
-            relation.fact.reason =
-              reasonStr ||
-              (relation.type === 'enrich' ? 'Дополнено деталями' : 'Обновлено');
+            relation.fact.reason = nextReason;
+            relation.fact.history = prevHistory.slice(-20);
             addedInCol++;
             factsAdded++;
             updatedCount++;
@@ -781,7 +860,6 @@ export default function App() {
       });
     }
 
-    const nowIso = new Date().toISOString();
     const isSameAsLastNote =
       updatedPerson.rawNotes.length > 0 &&
       updatedPerson.rawNotes[0].text.trim() === rawText;
@@ -811,24 +889,22 @@ export default function App() {
       inferencesCount,
       updatedCount,
       duplicatesSkipped,
-      engineName: engineUsed === 'gemini' ? 'Gemini AI' : 'Локальный ИИ',
+      engineName: engineUsed === 'gemini' ? 'Gemini' : t.sidebar.engineLocal,
       usedFallback,
       fallbackReason,
       snapshotBefore,
     });
 
     if (factsAdded > 0) {
-      const dupPart =
-        duplicatesSkipped > 0 ? `, пропущено дублей: ${duplicatesSkipped}` : '';
       showToast(
-        `Готово! +${factsAdded} фактов, ${inferencesCount} выводов ИИ${dupPart}`,
+        t.toasts.analysisSuccess(factsAdded, inferencesCount, duplicatesSkipped),
         'success'
       );
     } else {
       showToast(
         duplicatesSkipped > 0
-          ? `Дубликаты не добавлены (заблокировано ${duplicatesSkipped} повторяющихся фактов)`
-          : 'Новых фактов в тексте не обнаружено',
+          ? t.toasts.analysisDupsOnly(duplicatesSkipped)
+          : t.toasts.analysisEmpty,
         'info'
       );
     }
@@ -839,7 +915,7 @@ export default function App() {
     const restored = lastReport.snapshotBefore;
     updateSinglePerson(restored.id, () => restored);
     setLastReport(null);
-    showToast('Последний разбор отменён', 'info');
+    showToast(t.toasts.analysisUndone, 'info');
   };
 
   const handleAskAdvisor = async (questionText: string) => {
@@ -855,15 +931,15 @@ export default function App() {
       if (!navigator.onLine || !getEffectiveApiKey()) {
         throw new Error('NO_API_KEY');
       }
-      const answer = await askAdvisorWithGemini(activePerson, q);
+      const answer = await askAdvisorWithGemini(activePerson, q, lang);
       setActiveEngine('gemini');
       setAdvisorAnswer(answer);
     } catch (err) {
       setActiveEngine('local');
       if (err instanceof Error && err.message !== 'NO_API_KEY') {
-        showToast(formatGeminiFallbackReason(err), 'warning');
+        showToast(formatGeminiFallbackReason(err, lang), 'warning');
       }
-      setAdvisorAnswer(buildLocalAdvisorAnswer(activePerson, q));
+      setAdvisorAnswer(buildLocalAdvisorAnswer(activePerson, q, lang));
     } finally {
       setIsAskingAdvisor(false);
     }
@@ -882,12 +958,12 @@ export default function App() {
       if (!navigator.onLine || !getEffectiveApiKey()) {
         throw new Error('NO_API_KEY');
       }
-      data = await buildDossierWithGemini(mode, activePerson, people);
+      data = await buildDossierWithGemini(mode, activePerson, people, lang);
       engineUsed = 'gemini';
     } catch (err) {
       engineUsed = 'local';
       if (err instanceof Error && err.message !== 'NO_API_KEY') {
-        showToast(formatGeminiFallbackReason(err), 'warning');
+        showToast(formatGeminiFallbackReason(err, lang), 'warning');
       }
       data = buildDossierLocally(mode, activePerson, people);
     }
@@ -895,7 +971,7 @@ export default function App() {
     setActiveEngine(engineUsed);
     setSummaryData({
       ...data,
-      engineUsed: engineUsed === 'gemini' ? '⚡ Gemini AI' : '🧠 Умный локальный ИИ',
+      engineUsed: engineUsed === 'gemini' ? 'Gemini' : t.sidebar.engineLocal,
     });
     setSummaryLoading(false);
   };
@@ -904,18 +980,19 @@ export default function App() {
     if (navigator.clipboard?.writeText) {
       navigator.clipboard
         .writeText(text)
-        .then(() => showToast('Текст скопирован в буфер обмена', 'success'))
-        .catch(() => showToast('Не удалось скопировать текст', 'error'));
+        .then(() => showToast(t.toasts.copied, 'success'))
+        .catch(() => showToast(t.toasts.copyFailed, 'error'));
     } else {
-      showToast('Копирование не поддерживается в этом контексте', 'error');
+      showToast(t.toasts.copyUnsupported, 'error');
     }
   };
 
-  const formatSummaryPlainText = (d: DossierData) =>
-    [
+  const formatSummaryPlainText = (d: DossierData) => {
+    const locale = lang === 'kk' ? 'kk-KZ' : lang === 'en' ? 'en-US' : 'ru-RU';
+    return [
       '====================================================',
-      String(d.reportTitle || 'ИИ-ДОСЬЕ И АНАЛИТИКА').toUpperCase(),
-      `Сформировано: ${new Date().toLocaleString('ru-RU')}`,
+      String(d.reportTitle || t.toasts.summaryPlainTitle).toUpperCase(),
+      `${t.toasts.summaryGeneratedAt}: ${new Date().toLocaleString(locale)}`,
       '====================================================',
       '',
       d.block1Title,
@@ -936,6 +1013,7 @@ export default function App() {
       d.block6Title || '',
       d.block6Text || '',
     ].join('\n');
+  };
 
   const handleExportJson = () => {
     const json = JSON.stringify(
@@ -957,7 +1035,7 @@ export default function App() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast('Резервная копия JSON скачана', 'success');
+    showToast(t.toasts.jsonExported, 'success');
   };
 
   const handleImportJsonFile = (file: File) => {
@@ -976,128 +1054,210 @@ export default function App() {
         persistLocalSnapshot(imported, nextActive, currentScope);
         if (currentUser) {
           await syncPeopleMapToCloud(currentUser.uid, imported).catch(() => {
-            showToast('Импорт выполнен локально, нажмите «Синхронизировать сейчас»', 'warning');
+            showToast(t.toasts.importLocalOnly, 'warning');
           });
         }
-        showToast(`Импортировано вкладок: ${imported.length}`, 'success');
+        showToast(t.toasts.jsonImported(imported.length), 'success');
       } catch {
-        showToast('Ошибка: неверный формат JSON-файла', 'error');
+        showToast(t.toasts.jsonInvalid, 'error');
       }
     };
     reader.readAsText(file);
   };
 
+  const handleExportReminderCalendar = useCallback(
+    (reminder: UpcomingDateReminder) => {
+      const eventLabel = reminder.isBirthday ? t.reminders.birthday : reminder.factText;
+      const title = `${reminder.personName} — ${eventLabel}`;
+      downloadIcsEvent({
+        personName: reminder.personName,
+        title,
+        day: reminder.day,
+        month: reminder.month,
+        isRecurringYearly:
+          reminder.isBirthday || isAnnualEventFact('', reminder.factText),
+        description: reminder.factText,
+      });
+      showToast(t.toasts.calendarExported(title), 'success');
+    },
+    [showToast, t]
+  );
+
+  const handleExportFactCalendar = useCallback(
+    (factText: string, colTitle: string) => {
+      if (!activePerson) return;
+      const extracted = extractExportableDateFromFact(colTitle, factText);
+      if (!extracted) return;
+      const title = `${activePerson.name} — ${factText}`;
+      downloadIcsEvent({
+        personName: activePerson.name,
+        title,
+        day: extracted.day,
+        month: extracted.month,
+        isRecurringYearly: extracted.isYearly,
+        description: `${colTitle}: ${factText}`,
+      });
+      showToast(t.toasts.calendarExported(title), 'success');
+    },
+    [activePerson, showToast, t]
+  );
+
   const pendingCount = pendingQueue.upsertIds.length + pendingQueue.deleteIds.length;
 
   return (
-    <>
+    <LanguageProvider lang={lang} onChangeLang={handleChangeLanguage}>
       {authLoading ? (
-        <div className="min-h-screen flex flex-col items-center justify-center gap-3.5 p-6">
-          <div className="w-9 h-9 rounded-full border-3 border-violet-500/25 border-t-violet-500 animate-spin" />
-          <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            Проверяем аккаунт и синхронизацию...
+        <div className="min-h-screen flex flex-col items-center justify-center gap-3 p-6">
+          <div className="w-7 h-7 rounded-full border-2 border-zinc-500/30 border-t-zinc-400 animate-spin" />
+          <div className="text-[13px]" style={{ color: 'var(--text-secondary)' }}>
+            {t.common.loading}
           </div>
         </div>
       ) : !currentUser && !isGuestMode ? (
         <AuthScreen
           initialError={authError}
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
           onContinueGuest={() => {
             setIsGuestMode(true);
             loadLocalScope('guest');
-            showToast(
-              'Открыт локальный блокнот (данные хранятся только в этом браузере)',
-              'info'
-            );
+            showToast(t.toasts.guestMode, 'info');
           }}
           onToast={showToast}
         />
       ) : (
-        <div className="min-h-screen flex flex-col">
-          <Header
+        <div className="min-h-screen flex">
+          <Sidebar
             people={people}
             activePersonId={activePersonId}
+            reminders={upcomingReminders}
             searchQuery={searchQuery}
             selectedGroup={selectedGroup}
             theme={theme}
-            accountLabel={currentUser ? getUserDisplayLabel(currentUser) : 'Гость (локально)'}
+            accountLabel={currentUser ? getUserDisplayLabel(currentUser) : t.common.guest}
             isSignedIn={Boolean(currentUser)}
             cloudStatus={cloudStatus}
             pendingCount={pendingCount}
             isSyncing={isSyncing}
             activeEngine={activeEngine}
+            mobileOpen={mobileSidebarOpen}
+            onCloseMobile={() => setMobileSidebarOpen(false)}
             onSelectPerson={handleSelectPerson}
             onSearchChange={setSearchQuery}
             onSelectGroup={setSelectedGroup}
             onOpenAddPerson={() => setAddPersonOpen(true)}
             onOpenAccount={() => setAccountOpen(true)}
             onOpenApiSettings={() => setApiSettingsOpen(true)}
-            onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+            onToggleTheme={handleToggleTheme}
             onExportJson={handleExportJson}
             onImportJsonFile={handleImportJsonFile}
             onManualSync={handleManualSync}
+            onExportReminderCalendar={handleExportReminderCalendar}
           />
 
-          <main className="max-w-[1240px] w-full mx-auto px-4 pt-5 pb-12 flex-1 flex flex-col gap-5">
-            <UpcomingRemindersBar
-              reminders={upcomingReminders}
-              onSelectPerson={handleSelectPerson}
-            />
-
-            {!activePerson ? (
-              <div
-                className="rounded-2xl border p-12 text-center"
-                style={{
-                  backgroundColor: 'var(--bg-surface)',
-                  borderColor: 'var(--border-color)',
-                }}
+          <div className="flex-1 min-w-0 flex flex-col">
+            <OfflineIndicator />
+            {/* Compact mobile bar */}
+            <header
+              className="lg:hidden h-12 px-3.5 border-b flex items-center justify-between gap-3 sticky top-0 z-30 backdrop-blur-md"
+              style={{
+                backgroundColor: 'var(--bg-header)',
+                borderColor: 'var(--border-color)',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setMobileSidebarOpen(true)}
+                aria-label={t.sidebar.openContactsAria}
+                className="w-8 h-8 rounded-md inline-flex items-center justify-center hover:bg-[var(--bg-hover)]"
+                style={{ color: 'var(--text-primary)' }}
               >
-                <div className="text-4xl mb-3">📒</div>
-                <h2 className="font-display text-xl font-bold mb-2">
-                  В вашем блокноте пока нет вкладок
-                </h2>
-                <p
-                  className="text-sm max-w-md mx-auto mb-5"
+                <Menu className="w-4 h-4" />
+              </button>
+              <span className="font-display text-sm font-semibold truncate flex-1 text-center">
+                {activePerson ? activePerson.name : t.sidebar.brand}
+              </span>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleToggleTheme}
+                  aria-label={theme === 'dark' ? t.sidebar.lightTheme : t.sidebar.darkTheme}
+                  title={theme === 'dark' ? t.sidebar.lightTheme : t.sidebar.darkTheme}
+                  className="w-8 h-8 rounded-md inline-flex items-center justify-center hover:bg-[var(--bg-hover)]"
                   style={{ color: 'var(--text-secondary)' }}
                 >
-                  Создайте вкладку с именем человека, а затем вставляйте любые заметки о нём — ИИ сам разложит факты без дублей, сделает выводы и создаст новые колонки.
-                </p>
-                <div className="flex flex-wrap gap-2.5 justify-center">
-                  <button
-                    type="button"
-                    onClick={() => setAddPersonOpen(true)}
-                    className="px-4 py-2.5 rounded-xl text-[13px] font-semibold text-white"
-                    style={{ background: 'var(--accent-gradient)' }}
-                  >
-                    + Добавить человека
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const sample = createDefaultSampleState();
-                      setPeople(sample.people);
-                      setActivePersonId(sample.activePersonId);
-                      persistLocalSnapshot(
-                        sample.people,
-                        sample.activePersonId,
-                        currentScope
-                      );
-                      if (currentUser && sample.people[0]) {
-                        pushPersonUpdate(sample.people[0], currentUser.uid);
-                      }
-                      showToast('Загружен пример вкладки «Алина»', 'success');
-                    }}
-                    className="px-4 py-2.5 rounded-xl border text-[13px] font-semibold"
-                    style={{
-                      backgroundColor: 'var(--bg-elevated)',
-                      borderColor: 'var(--border-color)',
-                    }}
-                  >
-                    Загрузить пример (Алина)
-                  </button>
-                </div>
+                  {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAddPersonOpen(true)}
+                  aria-label={t.sidebar.addContactHeaderAria}
+                  className="w-8 h-8 rounded-md inline-flex items-center justify-center hover:bg-[var(--bg-hover)]"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
               </div>
-            ) : (
-              <>
+            </header>
+
+            <main className="max-w-[960px] w-full mx-auto px-4 sm:px-8 py-6 sm:py-8 flex-1 flex flex-col gap-6">
+              {!activePerson ? (
+                <div
+                  className="rounded-lg border p-10 text-center my-auto"
+                  style={{
+                    backgroundColor: 'var(--bg-surface)',
+                    borderColor: 'var(--border-color)',
+                  }}
+                >
+                  <h2 className="font-display text-lg font-semibold mb-2">
+                    {t.emptyState.title}
+                  </h2>
+                  <p
+                    className="text-[13px] max-w-md mx-auto mb-5 leading-relaxed"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
+                    {t.emptyState.description}
+                  </p>
+                  <div className="flex flex-wrap gap-2.5 justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setAddPersonOpen(true)}
+                      className="px-4 py-2 rounded-md text-[13px] font-medium hover:opacity-90"
+                      style={{
+                        backgroundColor: 'var(--btn-primary-bg)',
+                        color: 'var(--btn-primary-text)',
+                      }}
+                    >
+                      {t.emptyState.addContact}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const sample = createDefaultSampleState();
+                        setPeople(sample.people);
+                        setActivePersonId(sample.activePersonId);
+                        persistLocalSnapshot(
+                          sample.people,
+                          sample.activePersonId,
+                          currentScope
+                        );
+                        if (currentUser && sample.people[0]) {
+                          pushPersonUpdate(sample.people[0], currentUser.uid);
+                        }
+                        showToast(t.emptyState.sampleToast, 'success');
+                      }}
+                      className="px-4 py-2 rounded-md border text-[13px] font-medium hover:bg-[var(--bg-hover)]"
+                      style={{
+                        backgroundColor: 'var(--bg-elevated)',
+                        borderColor: 'var(--border-color)',
+                      }}
+                    >
+                      {t.emptyState.loadSample}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
                 <ProfileCard
                   person={activePerson}
                   onRename={(newName) =>
@@ -1144,9 +1304,9 @@ export default function App() {
                     if (removed > 0) {
                       copy.updatedAt = new Date().toISOString();
                       updateSinglePerson(activePerson.id, () => copy);
-                      showToast(`Очищено повторяющихся фактов: ${removed}`, 'success');
+                      showToast(t.toasts.dedupDone(removed), 'success');
                     } else {
-                      showToast('Дубликатов не найдено — все факты уникальны', 'info');
+                      showToast(t.toasts.dedupNone, 'info');
                     }
                   }}
                   onDeletePerson={() => handleDeletePerson(activePerson)}
@@ -1169,6 +1329,7 @@ export default function App() {
                   onAdvisorQueryChange={setAdvisorQuery}
                   onAskAdvisor={handleAskAdvisor}
                   onDismissAdvisor={() => setAdvisorAnswer('')}
+                  onChatCleaned={() => showToast(t.toasts.chatCleanedToast, 'info')}
                 />
 
                 <ColumnsGrid
@@ -1189,39 +1350,77 @@ export default function App() {
                     if (!col) return;
                     setConfirmState({
                       open: true,
-                      title: `Удалить колонку «${col.title}»?`,
-                      message: `Будут удалены все записи внутри этой колонки (${col.facts.length} шт.).`,
+                      title: t.toasts.deleteColTitle(col.title),
+                      message: t.toasts.deleteColMsg(col.facts.length),
                       onConfirm: () => {
                         updateSinglePerson(activePerson.id, (p) => ({
                           ...p,
                           updatedAt: new Date().toISOString(),
                           columns: p.columns.filter((c) => c.id !== colId),
                         }));
-                        showToast(`Колонка «${col.title}» удалена`, 'info');
+                        showToast(t.toasts.colDeleted(col.title), 'info');
                       },
                     });
                   }}
                   onEditFact={(colId, factId, newText) =>
-                    updateSinglePerson(activePerson.id, (p) => ({
-                      ...p,
-                      updatedAt: new Date().toISOString(),
-                      columns: p.columns.map((c) => {
-                        if (c.id !== colId) return c;
-                        if (!newText) {
+                    updateSinglePerson(activePerson.id, (p) => {
+                      const editNow = new Date().toISOString();
+                      return {
+                        ...p,
+                        updatedAt: editNow,
+                        columns: p.columns.map((c) => {
+                          if (c.id !== colId) return c;
+                          if (!newText) {
+                            return {
+                              ...c,
+                              facts: c.facts.filter((f) => f.id !== factId),
+                            };
+                          }
                           return {
                             ...c,
-                            facts: c.facts.filter((f) => f.id !== factId),
+                            facts: c.facts.map((f) => {
+                              if (f.id !== factId) return f;
+                              if (f.text === newText) {
+                                return { ...f, isNew: false };
+                              }
+                              const prevHistory: FactHistoryEntry[] = Array.isArray(f.history)
+                                ? [...f.history]
+                                : f.prevText
+                                ? [
+                                    {
+                                      text: f.prevText,
+                                      changedAt: p.updatedAt || editNow,
+                                      reason: f.reason || undefined,
+                                    },
+                                  ]
+                                : [];
+                              if (
+                                prevHistory.length === 0 ||
+                                prevHistory[prevHistory.length - 1].text.trim().toLowerCase() !==
+                                  f.text.trim().toLowerCase()
+                              ) {
+                                prevHistory.push({
+                                  text: f.text,
+                                  changedAt: editNow,
+                                  reason: t.toasts.manualEditReason,
+                                });
+                              }
+                              return {
+                                ...f,
+                                text: newText,
+                                isNew: false,
+                                tag: 'updated',
+                                prevText: f.text,
+                                reason: t.toasts.manualEditReason,
+                                history: prevHistory.slice(-20),
+                              };
+                            }),
                           };
-                        }
-                        return {
-                          ...c,
-                          facts: c.facts.map((f) =>
-                            f.id === factId ? { ...f, text: newText, isNew: false } : f
-                          ),
-                        };
-                      }),
-                    }))
+                        }),
+                      };
+                    })
                   }
+                  onExportDateToCalendar={handleExportFactCalendar}
                   onDeleteFact={(colId, factId) =>
                     updateSinglePerson(activePerson.id, (p) => ({
                       ...p,
@@ -1237,7 +1436,7 @@ export default function App() {
                     const rel = findFactRelationAcrossPerson(activePerson, text, '');
                     if (rel.type === 'duplicate' || rel.type === 'enrich') {
                       showToast(
-                        `Похожий факт уже есть в колонке «${rel.col?.title}»`,
+                        t.toasts.similarFactExists(rel.col?.title || ''),
                         'warning'
                       );
                       return;
@@ -1281,12 +1480,13 @@ export default function App() {
                       ...p,
                       rawNotes: p.rawNotes.filter((n) => n.id !== noteId),
                     }));
-                    showToast('Заметка удалена из истории', 'info');
+                    showToast(t.toasts.noteDeleted, 'info');
                   }}
                 />
-              </>
-            )}
-          </main>
+                </>
+              )}
+            </main>
+          </div>
 
           {/* Modals */}
           <AccountModal
@@ -1303,9 +1503,9 @@ export default function App() {
               if (currentUser) {
                 try {
                   await logoutFromFirebase();
-                  showToast('Вы вышли из аккаунта', 'info');
+                  showToast(t.toasts.loggedOut, 'info');
                 } catch {
-                  showToast('Ошибка при выходе из аккаунта', 'error');
+                  showToast(t.toasts.logoutError, 'error');
                 }
               } else {
                 setIsGuestMode(false);
@@ -1341,18 +1541,18 @@ export default function App() {
               if (val) {
                 safeStorage.setItem(STORAGE_API_KEY, val);
                 setActiveEngine('gemini');
-                showToast('API-ключ сохранён (активен Gemini AI)', 'success');
+                showToast(t.toasts.apiSaved, 'success');
               } else {
                 safeStorage.removeItem(STORAGE_API_KEY);
                 setActiveEngine('local');
-                showToast('Ключ очищен', 'info');
+                showToast(t.toasts.apiCleared, 'info');
               }
               setApiSettingsOpen(false);
             }}
             onClearKey={() => {
               safeStorage.removeItem(STORAGE_API_KEY);
               setActiveEngine('local');
-              showToast('Пользовательский ключ очищен', 'info');
+              showToast(t.toasts.userKeyCleared, 'info');
             }}
           />
 
@@ -1388,26 +1588,26 @@ export default function App() {
               a.click();
               document.body.removeChild(a);
               URL.revokeObjectURL(url);
-              showToast('Файл .txt скачан', 'success');
+              showToast(t.toasts.txtDownloaded, 'success');
             }}
           />
         </div>
       )}
 
       {/* Toast stack */}
-      <div className="fixed bottom-5 right-5 z-60 flex flex-col gap-2 max-w-[370px] w-[calc(100%-40px)] pointer-events-none">
-        {toasts.map((t) => {
+      <div className="fixed bottom-5 right-5 z-40 flex flex-col gap-2 max-w-[370px] w-[calc(100%-40px)] pointer-events-none">
+        {toasts.map((toastItem) => {
           const borderCol =
-            t.type === 'success'
+            toastItem.type === 'success'
               ? 'var(--success-border)'
-              : t.type === 'warning'
+              : toastItem.type === 'warning'
               ? 'var(--warning-border)'
-              : t.type === 'error'
+              : toastItem.type === 'error'
               ? 'var(--danger-border)'
               : 'var(--border-color)';
           return (
             <div
-              key={t.id}
+              key={toastItem.id}
               role="status"
               className="pointer-events-auto px-3.5 py-3 rounded-xl border shadow-lg text-[13px] font-medium flex items-center justify-between gap-2.5 animate-pop-in"
               style={{
@@ -1416,11 +1616,13 @@ export default function App() {
                 color: 'var(--text-primary)',
               }}
             >
-              <span>{t.message}</span>
+              <span>{toastItem.message}</span>
               <button
                 type="button"
-                aria-label="Закрыть уведомление"
-                onClick={() => setToasts((prev) => prev.filter((item) => item.id !== t.id))}
+                aria-label={t.common.closeNotice}
+                onClick={() =>
+                  setToasts((prev) => prev.filter((item) => item.id !== toastItem.id))
+                }
                 className="opacity-70 hover:opacity-100 p-0.5"
               >
                 <X className="w-4 h-4" />
@@ -1429,6 +1631,6 @@ export default function App() {
           );
         })}
       </div>
-    </>
+    </LanguageProvider>
   );
 }
