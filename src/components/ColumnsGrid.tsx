@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { CalendarPlus, History, Plus, X } from 'lucide-react';
 import type { Column, Fact, FactHistoryEntry, Person } from '../types/notebook';
+import { AnimatePresence, motion } from 'motion/react';
 import { useI18n } from '../utils/LanguageContext';
 import { extractExportableDateFromFact } from '../utils/calendarExport';
 import { formatDateTime } from '../utils/storage';
+import { FAST_TRANSITION, collapseVariants } from '../utils/motionPresets';
 
 interface ColumnsGridProps {
   person: Person;
@@ -223,26 +225,34 @@ const ColumnCard: React.FC<ColumnCardProps> = ({
                     </div>
                   )}
 
-                  {hasHistory && isHistoryOpen && (
-                    <ol
-                      className="mt-1.5 pl-2.5 border-l-2 space-y-1 text-[11.5px]"
-                      style={{
-                        borderColor: 'var(--border-color)',
-                        color: 'var(--text-secondary)',
-                      }}
-                    >
-                      {historyEntries.map((entry, idx) => (
-                        <li key={`${fact.id}_hist_${idx}`} className="leading-snug">
-                          <span className="line-through opacity-75">{entry.text}</span>
-                          {entry.changedAt && (
-                            <span className="ml-1.5 text-[10.5px]" style={{ color: 'var(--text-muted)' }}>
-                              ({formatDateTime(entry.changedAt, lang)})
-                            </span>
-                          )}
-                        </li>
-                      ))}
-                    </ol>
-                  )}
+                  <AnimatePresence initial={false}>
+                    {hasHistory && isHistoryOpen && (
+                      <motion.ol
+                        key={`hist-${fact.id}`}
+                        variants={collapseVariants}
+                        initial="initial"
+                        animate="animate"
+                        exit="exit"
+                        transition={FAST_TRANSITION}
+                        className="mt-1.5 pl-2.5 border-l-2 space-y-1 text-[11.5px] overflow-hidden"
+                        style={{
+                          borderColor: 'var(--border-color)',
+                          color: 'var(--text-secondary)',
+                        }}
+                      >
+                        {historyEntries.map((entry, idx) => (
+                          <li key={`${fact.id}_hist_${idx}`} className="leading-snug">
+                            <span className="line-through opacity-75">{entry.text}</span>
+                            {entry.changedAt && (
+                              <span className="ml-1.5 text-[10.5px]" style={{ color: 'var(--text-muted)' }}>
+                                ({formatDateTime(entry.changedAt, lang)})
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </motion.ol>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 <div className="flex items-center gap-0.5 shrink-0 mt-0.5">
@@ -344,31 +354,43 @@ export const ColumnsGrid: React.FC<ColumnsGridProps> = ({
 
   return (
     <section className="flex flex-col gap-3">
-      {query && (
-        <div
-          className="rounded-md border px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 text-xs"
-          style={{
-            backgroundColor: 'var(--bg-surface)',
-            borderColor: 'var(--border-color)',
-            color: 'var(--text-secondary)',
-          }}
-        >
-          <span>
-            {t.columns.filterPrefix} <strong style={{ color: 'var(--text-primary)' }}>«{searchQuery}»</strong> ·{' '}
-            <span className="tabular-nums">
-              {t.columns.sectionsOf(filteredColumns.length, person.columns.length)}
-            </span>
-          </span>
-          <button
-            type="button"
-            onClick={onClearSearch}
-            className="text-xs font-medium hover:underline"
-            style={{ color: 'var(--text-primary)' }}
+      <AnimatePresence initial={false}>
+        {query && (
+          <motion.div
+            key="columns-search-banner"
+            variants={collapseVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={FAST_TRANSITION}
+            className="overflow-hidden"
           >
-            {t.columns.resetFilter}
-          </button>
-        </div>
-      )}
+            <div
+              className="rounded-md border px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 text-xs"
+              style={{
+                backgroundColor: 'var(--bg-surface)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              <span>
+                {t.columns.filterPrefix} <strong style={{ color: 'var(--text-primary)' }}>«{searchQuery}»</strong> ·{' '}
+                <span className="tabular-nums">
+                  {t.columns.sectionsOf(filteredColumns.length, person.columns.length)}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={onClearSearch}
+                className="text-xs font-medium hover:underline"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                {t.columns.resetFilter}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {filteredColumns.length === 0 ? (
         <div

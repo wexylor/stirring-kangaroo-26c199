@@ -15,6 +15,7 @@ import {
   verifyBeforeUpdateEmail,
   sendEmailVerification,
   reload,
+  deleteUser,
   type Auth,
   type User,
 } from '@firebase/auth';
@@ -29,6 +30,12 @@ import {
 } from '@firebase/database';
 import type { Person } from '../types/notebook';
 import { normalizePeople } from '../utils/storage';
+import {
+  ADMIN_UID,
+  isAdminUid,
+  parseGlobalAiConfig,
+  type GlobalAiConfig,
+} from '../utils/aiPolicy';
 
 export const firebaseConfig = {
   apiKey: 'AIzaSyCZzb83vFUDEruoR4KMFBG-7CVnyBwkRDc',
@@ -123,7 +130,7 @@ export function getHumanFirebaseAuthError(err: unknown): string {
     return `Некорректный формат логина или Email.${suffix}`;
   }
   if (code === 'auth/requires-recent-login') {
-    return `Требуется повторный вход для смены почты. Введите текущий пароль ещё раз.${suffix}`;
+    return `Требуется подтверждение входа. Введите текущий пароль ещё раз.${suffix}`;
   }
   if (code === 'auth/operation-not-allowed') {
     return `Операция не разрешена в настройках Firebase Console Authentication.${suffix}`;
@@ -207,6 +214,30 @@ export async function bindRealEmailToUser(
   }).catch(() => {});
 
   return { email: cleanEmail };
+}
+
+export async function deleteCurrentUserAccount(
+  user: User,
+  currentPassword: string,
+  onBeforeCloudWipe?: () => void
+): Promise<void> {
+  if (!currentPassword) {
+    throw new Error('Введите текущий пароль для подтверждения удаления аккаунта.');
+  }
+  if (!user.email) {
+    throw new Error('У текущего аккаунта отсутствует базовый идентификатор для проверки пароля.');
+  }
+
+  const { db } = getFirebaseServices();
+  const credential = EmailAuthProvider.credential(user.email, currentPassword);
+  await reauthenticateWithCredential(user, credential);
+
+  // Stop active RTDB listeners before deleting cloud data
+  onBeforeCloudWipe?.();
+
+  // Delete cloud data while auth credentials are still valid, then delete Auth account
+  await remove(ref(db, `users/${user.uid}`));
+  await deleteUser(user);
 }
 
 export async function resendVerificationForUser(user: User): Promise<void> {
@@ -313,4 +344,50 @@ export function subscribeUserPeople(
       onError(err);
     }
   );
+}
+
+export function isAdminUser(user: User | null): boolean {
+  return Boolean(user && isAdminUid(user.uid, ADMIN_UID));
+}
+
+export async function getFreshIdToken(user: User | null): Promise<string | null> {
+  if (!user) return null;
+  try {
+    return await user.getIdToken();
+  } catch {
+    return null;
+  }
+}
+
+export function subscribeGlobalAiConfig(
+  onData: (config: GlobalAiConfig) => void,
+  onError?: (err: Error) => void
+): Unsubscribe {
+  const { db } = getFirebaseServices();
+  const cfgRef = ref(db, 'appConfig/aiSettings');
+  return onValue(
+    cfgRef,
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        onData({ sharedAiEnabled: true });
+        return;
+      }
+      onData(parseGlobalAiConfig(snapshot.val()));
+    },
+    (err) => {
+      onError?.(err);
+    }
+  );
+}
+
+export async function setGlobalAiEnabledInCloud(
+  user: User,
+  sharedAiEnabled: boolean
+): Promise<void> {
+  const { db } = getFirebaseServices();
+  await set(ref(db, 'appConfig/aiSettings'), {
+    sharedAiEnabled,
+    updatedAt: new Date().toISOString(),
+    updatedBy: user.uid,
+  });
 }

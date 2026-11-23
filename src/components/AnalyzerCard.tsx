@@ -1,8 +1,10 @@
 import React, { useMemo } from 'react';
 import { MessageSquareText, RotateCcw, X } from 'lucide-react';
 import type { AnalysisReport, Person } from '../types/notebook';
+import { AnimatePresence, motion } from 'motion/react';
 import { useI18n } from '../utils/LanguageContext';
 import { parseChatTranscript } from '../utils/chatParser';
+import { FAST_TRANSITION, collapseVariants } from '../utils/motionPresets';
 
 interface AnalyzerCardProps {
   person: Person;
@@ -93,37 +95,49 @@ export const AnalyzerCard: React.FC<AnalyzerCardProps> = ({
         }}
       />
 
-      {showChatBar && (
-        <div
-          className="mt-2 px-3 py-2 rounded-md border flex flex-wrap items-center justify-between gap-2 text-xs animate-pop-in"
-          style={{
-            backgroundColor: 'var(--bg-elevated)',
-            borderColor: 'var(--border-color)',
-            color: 'var(--text-secondary)',
-          }}
-        >
-          <span className="inline-flex items-center gap-1.5">
-            <MessageSquareText className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--info-text)' }} />
-            <span>{t.analyzer.chatDetected(chatPreview.extractedLines.length)}</span>
-          </span>
-          <button
-            type="button"
-            disabled={isAnalyzing}
-            onClick={() => {
-              onDraftChange(chatPreview.cleanedText);
-              onChatCleaned?.();
-            }}
-            className="px-2.5 py-1 rounded border text-xs font-medium transition-colors hover:bg-[var(--bg-hover)] disabled:opacity-60"
-            style={{
-              backgroundColor: 'var(--bg-surface)',
-              borderColor: 'var(--border-color)',
-              color: 'var(--text-primary)',
-            }}
+      <AnimatePresence initial={false}>
+        {showChatBar && (
+          <motion.div
+            key="chat-detected-bar"
+            variants={collapseVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={FAST_TRANSITION}
+            className="overflow-hidden"
           >
-            {t.analyzer.cleanChatBtn}
-          </button>
-        </div>
-      )}
+            <div
+              className="mt-2 px-3 py-2 rounded-md border flex flex-wrap items-center justify-between gap-2 text-xs"
+              style={{
+                backgroundColor: 'var(--bg-elevated)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <MessageSquareText className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--info-text)' }} />
+                <span>{t.analyzer.chatDetected(chatPreview.extractedLines.length)}</span>
+              </span>
+              <button
+                type="button"
+                disabled={isAnalyzing}
+                onClick={() => {
+                  onDraftChange(chatPreview.cleanedText);
+                  onChatCleaned?.();
+                }}
+                className="px-2.5 py-1 rounded border text-xs font-medium transition-colors hover:bg-[var(--bg-hover)] disabled:opacity-60"
+                style={{
+                  backgroundColor: 'var(--bg-surface)',
+                  borderColor: 'var(--border-color)',
+                  color: 'var(--text-primary)',
+                }}
+              >
+                {t.analyzer.cleanChatBtn}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="flex flex-wrap items-center justify-between gap-3 mt-2.5">
         <span className="hidden sm:inline text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
@@ -161,79 +175,91 @@ export const AnalyzerCard: React.FC<AnalyzerCardProps> = ({
         </div>
       </div>
 
-      {report && (
-        <div
-          className="mt-3 px-3.5 py-2.5 rounded-md border flex flex-wrap items-center justify-between gap-2 text-xs animate-pop-in"
-          style={{
-            backgroundColor: 'var(--bg-elevated)',
-            borderColor: 'var(--border-color)',
-            color: 'var(--text-secondary)',
-          }}
-        >
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 tabular-nums">
-            <span className="font-medium" style={{ color: 'var(--success-text)' }}>
-              {t.analyzer.donePrefix} ({report.engineName})
-            </span>
-            <span aria-hidden="true">·</span>
-            <span>{t.analyzer.factsAdded(report.factsAdded)}</span>
-            {report.newColsCount > 0 && (
-              <>
-                <span aria-hidden="true">·</span>
-                <span>{t.analyzer.newCols(report.newColsCount)}</span>
-              </>
-            )}
-            {report.inferencesCount > 0 && (
-              <>
-                <span aria-hidden="true">·</span>
-                <span>{t.analyzer.inferences(report.inferencesCount)}</span>
-              </>
-            )}
-            {report.updatedCount > 0 && (
-              <>
-                <span aria-hidden="true">·</span>
-                <span>{t.analyzer.updates(report.updatedCount)}</span>
-              </>
-            )}
-            {report.duplicatesSkipped > 0 && (
-              <>
-                <span aria-hidden="true">·</span>
-                <span>{t.analyzer.dupsSkipped(report.duplicatesSkipped)}</span>
-              </>
-            )}
-            {report.usedFallback && report.fallbackReason && (
-              <span style={{ color: 'var(--warning-text)' }}>
-                ({report.fallbackReason})
-              </span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            {report.factsAdded > 0 && (
-              <button
-                type="button"
-                onClick={onUndoAnalysis}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded border text-xs font-medium hover:bg-[var(--bg-hover)]"
-                style={{
-                  borderColor: 'var(--border-color)',
-                  color: 'var(--text-primary)',
-                }}
-              >
-                <RotateCcw className="w-3 h-3" />
-                <span>{t.analyzer.undo}</span>
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={onDismissReport}
-              aria-label={t.analyzer.dismissReportAria}
-              className="p-1 rounded hover:bg-[var(--bg-hover)]"
-              style={{ color: 'var(--text-muted)' }}
+      <AnimatePresence initial={false}>
+        {report && (
+          <motion.div
+            key="analysis-report"
+            variants={collapseVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={FAST_TRANSITION}
+            className="overflow-hidden"
+          >
+            <div
+              className="mt-3 px-3.5 py-2.5 rounded-md border flex flex-wrap items-center justify-between gap-2 text-xs"
+              style={{
+                backgroundColor: 'var(--bg-elevated)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-secondary)',
+              }}
             >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 tabular-nums">
+                <span className="font-medium" style={{ color: 'var(--success-text)' }}>
+                  {t.analyzer.donePrefix} ({report.engineName})
+                </span>
+                <span aria-hidden="true">·</span>
+                <span>{t.analyzer.factsAdded(report.factsAdded)}</span>
+                {report.newColsCount > 0 && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span>{t.analyzer.newCols(report.newColsCount)}</span>
+                  </>
+                )}
+                {report.inferencesCount > 0 && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span>{t.analyzer.inferences(report.inferencesCount)}</span>
+                  </>
+                )}
+                {report.updatedCount > 0 && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span>{t.analyzer.updates(report.updatedCount)}</span>
+                  </>
+                )}
+                {report.duplicatesSkipped > 0 && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span>{t.analyzer.dupsSkipped(report.duplicatesSkipped)}</span>
+                  </>
+                )}
+                {report.usedFallback && report.fallbackReason && (
+                  <span style={{ color: 'var(--warning-text)' }}>
+                    ({report.fallbackReason})
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                {report.factsAdded > 0 && (
+                  <button
+                    type="button"
+                    onClick={onUndoAnalysis}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded border text-xs font-medium hover:bg-[var(--bg-hover)]"
+                    style={{
+                      borderColor: 'var(--border-color)',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>{t.analyzer.undo}</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onDismissReport}
+                  aria-label={t.analyzer.dismissReportAria}
+                  className="p-1 rounded hover:bg-[var(--bg-hover)]"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Ask over dossier */}
       <div
@@ -290,31 +316,43 @@ export const AnalyzerCard: React.FC<AnalyzerCardProps> = ({
           </button>
         </form>
 
-        {advisorAnswer && (
-          <div
-            className="p-3.5 rounded-md border text-[13px] leading-relaxed whitespace-pre-line animate-pop-in"
-            style={{
-              backgroundColor: 'var(--bg-elevated)',
-              borderColor: 'var(--border-color)',
-            }}
-          >
-            <div className="flex items-center justify-between text-xs font-medium mb-1.5">
-              <span style={{ color: 'var(--text-primary)' }}>
-                {t.analyzer.answerHeader(person.name)}
-              </span>
-              <button
-                type="button"
-                onClick={onDismissAdvisor}
-                aria-label={t.analyzer.dismissAnswerAria}
-                className="p-0.5 rounded hover:bg-[var(--bg-hover)]"
-                style={{ color: 'var(--text-muted)' }}
+        <AnimatePresence initial={false}>
+          {advisorAnswer && (
+            <motion.div
+              key="advisor-answer"
+              variants={collapseVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={FAST_TRANSITION}
+              className="overflow-hidden"
+            >
+              <div
+                className="p-3.5 rounded-md border text-[13px] leading-relaxed whitespace-pre-line"
+                style={{
+                  backgroundColor: 'var(--bg-elevated)',
+                  borderColor: 'var(--border-color)',
+                }}
               >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            <div style={{ color: 'var(--text-secondary)' }}>{advisorAnswer}</div>
-          </div>
-        )}
+                <div className="flex items-center justify-between text-xs font-medium mb-1.5">
+                  <span style={{ color: 'var(--text-primary)' }}>
+                    {t.analyzer.answerHeader(person.name)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={onDismissAdvisor}
+                    aria-label={t.analyzer.dismissAnswerAria}
+                    className="p-0.5 rounded hover:bg-[var(--bg-hover)]"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div style={{ color: 'var(--text-secondary)' }}>{advisorAnswer}</div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </section>
   );

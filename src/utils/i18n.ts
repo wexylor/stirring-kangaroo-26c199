@@ -248,6 +248,47 @@ export interface Translations {
     bindMailSentToast: string;
     verifySentToast: (email: string) => string;
     resetSentToast: (email: string) => string;
+    deleteAccountTitle: string;
+    deleteAccountDesc: string;
+    deleteAccountBtn: string;
+    adminTitle: string;
+    adminBadge: string;
+    adminSharedAiLabel: string;
+    adminSharedAiOn: string;
+    adminSharedAiOff: string;
+    adminSharedAiDesc: string;
+    adminServerKeyReady: string;
+    adminServerKeyMissing: string;
+    adminToggleSavedOn: string;
+    adminToggleSavedOff: string;
+    adminToggleServerOnlyNote: string;
+    adminToggleError: string;
+  };
+  deleteAccount: {
+    modalTitle: string;
+    stepCounter: (step: number, total: number) => string;
+    targetAccountLabel: string;
+    contactsCountWarning: (count: number) => string;
+    step1Heading: string;
+    step1Warning: string;
+    backupHint: string;
+    backupBtn: string;
+    step1Checkbox: string;
+    step2Heading: string;
+    step2Instruction: (keyword: string) => string;
+    step2Placeholder: (keyword: string) => string;
+    step3Heading: string;
+    step3Instruction: string;
+    passwordLabel: string;
+    passwordPlaceholder: string;
+    hidePassword: string;
+    showPassword: string;
+    emptyPasswordError: string;
+    backBtn: string;
+    nextBtn: string;
+    confirmDeleteBtn: string;
+    deletingBtn: string;
+    deletedToast: string;
   };
   modals: {
     newContactTitle: string;
@@ -269,7 +310,15 @@ export interface Translations {
     summaryPlaceholder: string;
     apiTitle: string;
     apiDesc: string;
-    apiKeyLabel: string;
+    analyzerModeLabel: string;
+    analyzerModeAuto: string;
+    analyzerModeAutoDesc: string;
+    analyzerModeLocal: string;
+    analyzerModeLocalDesc: string;
+    analyzerStatusLabel: string;
+    analyzerStatusReady: string;
+    analyzerStatusDisabled: string;
+    analyzerStatusNoKey: string;
     summaryTitle: string;
     summaryLoadingSub: string;
     summaryEngineSub: (engine: string) => string;
@@ -317,9 +366,8 @@ export interface Translations {
     noteDeleted: string;
     loggedOut: string;
     logoutError: string;
-    apiSaved: string;
-    apiCleared: string;
-    userKeyCleared: string;
+    modeSavedAuto: string;
+    modeSavedLocal: string;
     txtDownloaded: string;
     summaryPlainTitle: string;
     summaryGeneratedAt: string;
@@ -384,9 +432,9 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       sending: 'Отправка...',
       backToLogin: 'Назад ко входу',
       nameLabel: 'Имя',
-      namePlaceholder: 'Например: Арыс',
+      namePlaceholder: 'Например: Алекс',
       loginLabel: 'Логин или Email',
-      loginPlaceholder: 'arys или arys@mail.com',
+      loginPlaceholder: 'alex или alex@mail.com',
       passwordLabel: 'Пароль',
       forgotQuestion: 'Забыли пароль?',
       passwordPlaceholder: 'Минимум 6 символов',
@@ -602,6 +650,54 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       verifySentToast: (email) => `Письмо отправлено на ${email}`,
       resetSentToast: (email) =>
         `Ссылка для смены пароля отправлена на ${email}`,
+      deleteAccountTitle: 'Опасная зона',
+      deleteAccountDesc:
+        'Полное удаление аккаунта и всех облачных заметок без возможности восстановления.',
+      deleteAccountBtn: 'Удалить аккаунт',
+      adminTitle: 'Панель администратора',
+      adminBadge: 'Админ',
+      adminSharedAiLabel: 'Общий облачный ИИ для всех',
+      adminSharedAiOn: 'Включён',
+      adminSharedAiOff: 'Отключён',
+      adminSharedAiDesc:
+        'Когда выключено, сервер не обращается к Gemini, а все пользователи автоматически работают на встроенном локальном анализаторе.',
+      adminServerKeyReady: 'Серверный ключ Gemini активен',
+      adminServerKeyMissing: 'Серверный GEMINI_API_KEY не задан в Secrets',
+      adminToggleSavedOn: 'Общий облачный ИИ включён для всех',
+      adminToggleSavedOff: 'Общий облачный ИИ отключён — у всех локальный разбор',
+      adminToggleServerOnlyNote:
+        'Переключено на сервере. Чтобы состояние сохранялось при перезапуске, проверьте правила appConfig в Firebase.',
+      adminToggleError: 'Не удалось переключить общий ИИ',
+    },
+    deleteAccount: {
+      modalTitle: 'Удаление аккаунта',
+      stepCounter: (step, total) => `Шаг ${step} из ${total}`,
+      targetAccountLabel: 'Аккаунт:',
+      contactsCountWarning: (count) => `Контактов в облаке: ${count}`,
+      step1Heading: 'Проверьте последствия перед продолжением',
+      step1Warning:
+        'Аккаунт, все карточки людей, факты, важные даты и хронология встреч будут удалены из облака и этого браузера безвозвратно.',
+      backupHint: 'Если данные могут пригодиться позже, сначала скачайте копию:',
+      backupBtn: 'Скачать резервную копию (JSON)',
+      step1Checkbox:
+        'Я понимаю, что восстановить аккаунт и заметки будет невозможно',
+      step2Heading: 'Подтвердите удаление контрольным словом',
+      step2Instruction: (keyword) =>
+        `Чтобы исключить случайное нажатие, введите слово «${keyword}» в поле ниже:`,
+      step2Placeholder: (keyword) => `Введите ${keyword}`,
+      step3Heading: 'Финальная проверка: введите пароль',
+      step3Instruction:
+        'Последний шаг. Введите текущий пароль от аккаунта для окончательного удаления:',
+      passwordLabel: 'Текущий пароль',
+      passwordPlaceholder: 'Введите пароль',
+      hidePassword: 'Скрыть пароль',
+      showPassword: 'Показать пароль',
+      emptyPasswordError: 'Введите текущий пароль для подтверждения удаления',
+      backBtn: 'Назад',
+      nextBtn: 'Продолжить',
+      confirmDeleteBtn: 'Удалить аккаунт навсегда',
+      deletingBtn: 'Удаление...',
+      deletedToast: 'Аккаунт и все данные удалены',
     },
     modals: {
       newContactTitle: 'Новый контакт',
@@ -624,8 +720,18 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       summaryPlaceholder: 'Пили кофе, обсуждали поездку и планы...',
       apiTitle: 'Настройки анализатора',
       apiDesc:
-        'При наличии ключа разбор заметок и сводки выполняются через Gemini API. Без ключа или при отсутствии сети работает встроенный локальный разбор.',
-      apiKeyLabel: 'Gemini API Key (необязательно)',
+        'Общий облачный ИИ работает на сервере без ручного ввода ключей. При отключении или отсутствии сети всегда доступен локальный разбор.',
+      analyzerModeLabel: 'Режим работы',
+      analyzerModeAuto: 'Авто (Облачный ИИ + локальный резерв)',
+      analyzerModeAutoDesc:
+        'Использует серверный Gemini, если он включён администратором и есть интернет.',
+      analyzerModeLocal: 'Только локально',
+      analyzerModeLocalDesc:
+        'Заметки никогда не отправляются на сервер — работает только локальный движок.',
+      analyzerStatusLabel: 'Статус облачного ИИ',
+      analyzerStatusReady: 'Доступен для всех',
+      analyzerStatusDisabled: 'Отключён администратором',
+      analyzerStatusNoKey: 'Серверный ключ не настроен',
       summaryTitle: 'Сводка',
       summaryLoadingSub: 'Собираем сводку по заметкам...',
       summaryEngineSub: (engine) => `Источник: ${engine}`,
@@ -680,9 +786,8 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       noteDeleted: 'Заметка удалена из истории',
       loggedOut: 'Вы вышли из аккаунта',
       logoutError: 'Ошибка при выходе из аккаунта',
-      apiSaved: 'API-ключ сохранён (активен Gemini AI)',
-      apiCleared: 'Ключ очищен',
-      userKeyCleared: 'Пользовательский ключ очищен',
+      modeSavedAuto: 'Включён авторежим (облачный ИИ + локальный резерв)',
+      modeSavedLocal: 'Включён полностью локальный режим анализа',
       txtDownloaded: 'Файл .txt скачан',
       summaryPlainTitle: 'ИИ-ДОСЬЕ И АНАЛИТИКА',
       summaryGeneratedAt: 'Сформировано',
@@ -746,9 +851,9 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       sending: 'Жіберілуде...',
       backToLogin: 'Кіруге оралу',
       nameLabel: 'Аты',
-      namePlaceholder: 'Мысалы: Арыс',
+      namePlaceholder: 'Мысалы: Алекс',
       loginLabel: 'Логин немесе Email',
-      loginPlaceholder: 'arys немесе arys@mail.com',
+      loginPlaceholder: 'alex немесе alex@mail.com',
       passwordLabel: 'Құпиясөз',
       forgotQuestion: 'Құпиясөзді ұмыттыңыз ба?',
       passwordPlaceholder: 'Кемінде 6 таңба',
@@ -964,6 +1069,54 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       verifySentToast: (email) => `Хат ${email} мекенжайына жіберілді`,
       resetSentToast: (email) =>
         `Құпиясөзді ауыстыру сілтемесі ${email} поштасына жіберілді`,
+      deleteAccountTitle: 'Қауіпті аймақ',
+      deleteAccountDesc:
+        'Аккаунтты және бұлттағы барлық жазбаларды қалпына келтіру мүмкіндігінсіз толық жою.',
+      deleteAccountBtn: 'Аккаунтты жою',
+      adminTitle: 'Әкімші панелі',
+      adminBadge: 'Әкімші',
+      adminSharedAiLabel: 'Барлығына ортақ бұлтты AI',
+      adminSharedAiOn: 'Қосулы',
+      adminSharedAiOff: 'Өшірулі',
+      adminSharedAiDesc:
+        'Өшірілген кезде сервер Gemini-ге жүгінбейді, ал барлық пайдаланушылар жергілікті талдағышта жұмыс істейді.',
+      adminServerKeyReady: 'Сервердегі Gemini кілті белсенді',
+      adminServerKeyMissing: 'Сервердегі GEMINI_API_KEY құпияларда бапталмаған',
+      adminToggleSavedOn: 'Ортақ бұлтты AI барлығы үшін қосылды',
+      adminToggleSavedOff: 'Ортақ бұлтты AI өшірілді — барлығында жергілікті талдау',
+      adminToggleServerOnlyNote:
+        'Серверде ауыстырылды. Қайта жүктеуден кейін сақталуы үшін Firebase appConfig ережелерін тексеріңіз.',
+      adminToggleError: 'Ортақ AI күйін өзгерту мүмкін болмады',
+    },
+    deleteAccount: {
+      modalTitle: 'Аккаунтты жою',
+      stepCounter: (step, total) => `${step}-қадам (${total}-ден)`,
+      targetAccountLabel: 'Аккаунт:',
+      contactsCountWarning: (count) => `Бұлттағы контактілер: ${count}`,
+      step1Heading: 'Жалғастырмас бұрын салдарын тексеріңіз',
+      step1Warning:
+        'Аккаунт, барлық адам карточкалары, деректер, маңызды күндер және кездесу хронологиясы бұлттан да, осы браузерден де біржола өшіріледі.',
+      backupHint: 'Егер деректер кейін керек болса, алдымен көшірмесін жүктеп алыңыз:',
+      backupBtn: 'Резервтік көшірмені жүктеу (JSON)',
+      step1Checkbox:
+        'Аккаунт пен жазбаларды қалпына келтіру мүмкін емес екенін түсінемін',
+      step2Heading: 'Жоюды бақылау сөзімен растаңыз',
+      step2Instruction: (keyword) =>
+        `Кездейсоқ басып кетуді болдырмау үшін төмендегі өріске «${keyword}» сөзін енгізіңіз:`,
+      step2Placeholder: (keyword) => `${keyword} сөзін енгізіңіз`,
+      step3Heading: 'Соңғы тексеру: құпиясөзді енгізіңіз',
+      step3Instruction:
+        'Соңғы қадам. Біржола жою үшін аккаунттың ағымдағы құпиясөзін енгізіңіз:',
+      passwordLabel: 'Ағымдағы құпиясөз',
+      passwordPlaceholder: 'Құпиясөзді енгізіңіз',
+      hidePassword: 'Құпиясөзді жасыру',
+      showPassword: 'Құпиясөзді көрсету',
+      emptyPasswordError: 'Жоюды растау үшін ағымдағы құпиясөзді енгізіңіз',
+      backBtn: 'Артқа',
+      nextBtn: 'Жалғастыру',
+      confirmDeleteBtn: 'Аккаунтты біржола жою',
+      deletingBtn: 'Жойылуда...',
+      deletedToast: 'Аккаунт және барлық деректер жойылды',
     },
     modals: {
       newContactTitle: 'Жаңа контакт',
@@ -986,8 +1139,18 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       summaryPlaceholder: 'Кофе іштік, сапар мен жоспарларды талқыладық...',
       apiTitle: 'Талдағыш баптаулары',
       apiDesc:
-        'Кілт болған жағдайда жазбалар мен қорытынды Gemini API арқылы өңделеді. Кілті жоқ немесе желі болмаса, кіріктірілген жергілікті талдау жұмыс істейді.',
-      apiKeyLabel: 'Gemini API Key (міндетті емес)',
+        'Ортақ бұлтты AI серверде кілт енгізусіз жұмыс істейді. Өшірілгенде немесе желі болмаса, жергілікті талдау іске қосылады.',
+      analyzerModeLabel: 'Жұмыс режимі',
+      analyzerModeAuto: 'Авто (Бұлтты AI + жергілікті қор)',
+      analyzerModeAutoDesc:
+        'Әкімші қосса және желі болса, серверлік Gemini қолданылады.',
+      analyzerModeLocal: 'Тек жергілікті',
+      analyzerModeLocalDesc:
+        'Жазбалар серверге жіберілмейді — тек браузердегі қозғалтқыш жұмыс істейді.',
+      analyzerStatusLabel: 'Бұлтты AI мәртебесі',
+      analyzerStatusReady: 'Барлығына қолжетімді',
+      analyzerStatusDisabled: 'Әкімшімен өшірілген',
+      analyzerStatusNoKey: 'Сервер кілті бапталмаған',
       summaryTitle: 'Қорытынды',
       summaryLoadingSub: 'Жазбалар бойынша қорытынды жиналуда...',
       summaryEngineSub: (engine) => `Дереккөз: ${engine}`,
@@ -1041,9 +1204,8 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       noteDeleted: 'Жазба тарихтан жойылды',
       loggedOut: 'Аккаунттан шықтыңыз',
       logoutError: 'Аккаунттан шығу кезінде қате шықты',
-      apiSaved: 'API-кілт сақталды (Gemini AI белсенді)',
-      apiCleared: 'Кілт тазартылды',
-      userKeyCleared: 'Пайдаланушы кілті тазартылды',
+      modeSavedAuto: 'Авторежим қосылды (бұлтты AI + жергілікті қор)',
+      modeSavedLocal: 'Толық жергілікті талдау режимі қосылды',
       txtDownloaded: '.txt файлы жүктелді',
       summaryPlainTitle: 'AI ДОСЬЕ ЖӘНЕ ТАЛДАУ',
       summaryGeneratedAt: 'Құрылды',
@@ -1324,6 +1486,54 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       bindMailSentToast: 'Verification email sent',
       verifySentToast: (email) => `Email sent to ${email}`,
       resetSentToast: (email) => `Password reset link sent to ${email}`,
+      deleteAccountTitle: 'Danger zone',
+      deleteAccountDesc:
+        'Permanently delete your account and all cloud notes with no recovery.',
+      deleteAccountBtn: 'Delete account',
+      adminTitle: 'Admin panel',
+      adminBadge: 'Admin',
+      adminSharedAiLabel: 'Shared cloud AI for everyone',
+      adminSharedAiOn: 'Enabled',
+      adminSharedAiOff: 'Disabled',
+      adminSharedAiDesc:
+        'When disabled, the server does not call Gemini and everyone runs on the built-in local analyzer.',
+      adminServerKeyReady: 'Server Gemini key active',
+      adminServerKeyMissing: 'Server GEMINI_API_KEY is not set in Secrets',
+      adminToggleSavedOn: 'Shared cloud AI enabled for everyone',
+      adminToggleSavedOff: 'Shared cloud AI disabled — everyone uses local analysis',
+      adminToggleServerOnlyNote:
+        'Switched on server. To persist across restarts, verify appConfig rules in Firebase.',
+      adminToggleError: 'Could not update shared AI setting',
+    },
+    deleteAccount: {
+      modalTitle: 'Delete account',
+      stepCounter: (step, total) => `Step ${step} of ${total}`,
+      targetAccountLabel: 'Account:',
+      contactsCountWarning: (count) => `Contacts stored: ${count}`,
+      step1Heading: 'Review what will be removed',
+      step1Warning:
+        'Your account, all person cards, facts, important dates, and contact timelines will be permanently erased from the cloud and this browser.',
+      backupHint: 'If you want to keep a copy of your notes, download a backup first:',
+      backupBtn: 'Download backup (JSON)',
+      step1Checkbox:
+        'I understand that my account and all notes cannot be recovered',
+      step2Heading: 'Type confirmation keyword',
+      step2Instruction: (keyword) =>
+        `To prevent accidental deletion, type «${keyword}» in the field below:`,
+      step2Placeholder: (keyword) => `Type ${keyword}`,
+      step3Heading: 'Final check: enter your password',
+      step3Instruction:
+        'Final step. Enter your current account password to confirm permanent deletion:',
+      passwordLabel: 'Current password',
+      passwordPlaceholder: 'Enter your password',
+      hidePassword: 'Hide password',
+      showPassword: 'Show password',
+      emptyPasswordError: 'Enter your current password to confirm deletion',
+      backBtn: 'Back',
+      nextBtn: 'Continue',
+      confirmDeleteBtn: 'Delete account permanently',
+      deletingBtn: 'Deleting...',
+      deletedToast: 'Account and all data deleted',
     },
     modals: {
       newContactTitle: 'New contact',
@@ -1346,8 +1556,18 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       summaryPlaceholder: 'Had coffee, discussed upcoming trip and plans...',
       apiTitle: 'Analyzer settings',
       apiDesc:
-        'When an API key is provided, note analysis and dossiers use the Gemini API. Without a key or offline, the built-in local analyzer runs automatically.',
-      apiKeyLabel: 'Gemini API Key (optional)',
+        'Shared cloud AI runs on the server with no manual key setup. When disabled or offline, the built-in local analyzer works automatically.',
+      analyzerModeLabel: 'Analysis mode',
+      analyzerModeAuto: 'Auto (Cloud AI + local fallback)',
+      analyzerModeAutoDesc:
+        'Uses server Gemini when enabled by admin and online.',
+      analyzerModeLocal: 'Local only',
+      analyzerModeLocalDesc:
+        'Notes never leave this browser — uses the built-in local engine only.',
+      analyzerStatusLabel: 'Cloud AI status',
+      analyzerStatusReady: 'Available for everyone',
+      analyzerStatusDisabled: 'Disabled by admin',
+      analyzerStatusNoKey: 'Server key not configured',
       summaryTitle: 'Summary',
       summaryLoadingSub: 'Compiling notes summary...',
       summaryEngineSub: (engine) => `Engine: ${engine}`,
@@ -1400,9 +1620,8 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       noteDeleted: 'Note removed from history',
       loggedOut: 'Signed out',
       logoutError: 'Failed to sign out',
-      apiSaved: 'API key saved (Gemini AI active)',
-      apiCleared: 'Key cleared',
-      userKeyCleared: 'Custom API key cleared',
+      modeSavedAuto: 'Auto mode active (cloud AI + local fallback)',
+      modeSavedLocal: 'Local-only analysis mode active',
       txtDownloaded: '.txt file downloaded',
       summaryPlainTitle: 'AI DOSSIER & INSIGHTS',
       summaryGeneratedAt: 'Generated',

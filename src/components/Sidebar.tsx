@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   Download,
   Upload,
@@ -19,8 +19,16 @@ import { getInitials } from '../utils/storage';
 import { getDaysSinceLastContact } from '../utils/dateReminders';
 import { UpcomingRemindersBar } from './UpcomingRemindersBar';
 import { PWAInstallButton } from './PWAInstallButton';
+import { AnimatePresence, motion } from 'motion/react';
 import { useI18n } from '../utils/LanguageContext';
 import { translateGroupLabel } from '../utils/i18n';
+import {
+  DRAWER_TRANSITION,
+  FAST_TRANSITION,
+  TAB_SPRING_TRANSITION,
+  backdropVariants,
+  drawerLeftVariants,
+} from '../utils/motionPresets';
 
 interface SidebarProps {
   people: Person[];
@@ -99,6 +107,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const query = searchQuery.trim().toLowerCase();
 
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCloseMobile();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [mobileOpen, onCloseMobile]);
+
   const customGroups = Array.from(
     new Set(
       people
@@ -143,7 +160,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onCloseMobile();
   };
 
-  const sidebarContent = (
+  const renderSidebarContent = (isMobileDrawer: boolean) => (
     <div className="flex flex-col h-full">
       {/* Brand + Add person */}
       <div
@@ -246,13 +263,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   role="tab"
                   aria-selected={active}
                   onClick={() => onSelectGroup(grp)}
-                  className="px-2 py-0.5 rounded text-[11.5px] font-medium whitespace-nowrap shrink-0 transition-colors"
+                  className="relative px-2 py-0.5 rounded text-[11.5px] font-medium whitespace-nowrap shrink-0 transition-colors"
                   style={{
-                    backgroundColor: active ? 'var(--bg-hover)' : 'transparent',
                     color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
                   }}
                 >
-                  {translateGroupLabel(grp, lang)}
+                  {active && (
+                    <motion.span
+                      layoutId={isMobileDrawer ? 'sidebarGroupMobile' : 'sidebarGroupDesktop'}
+                      transition={TAB_SPRING_TRANSITION}
+                      className="absolute inset-0 rounded"
+                      style={{ backgroundColor: 'var(--bg-hover)' }}
+                    />
+                  )}
+                  <span className="relative z-10">{translateGroupLabel(grp, lang)}</span>
                 </button>
               );
             })}
@@ -455,32 +479,45 @@ export const Sidebar: React.FC<SidebarProps> = ({
           borderColor: 'var(--border-color)',
         }}
       >
-        {sidebarContent}
+        {renderSidebarContent(false)}
       </aside>
 
       {/* Mobile slide-over drawer */}
-      {mobileOpen && (
-        <div
-          className="fixed inset-0 z-50 lg:hidden flex"
-          role="dialog"
-          aria-modal="true"
-          aria-label={t.sidebar.mobileNavAria}
-        >
+      <AnimatePresence>
+        {mobileOpen && (
           <div
-            className="fixed inset-0 bg-black/60"
-            onClick={onCloseMobile}
-          />
-          <aside
-            className="relative z-10 w-[284px] max-w-[85vw] h-full border-r flex flex-col"
-            style={{
-              backgroundColor: 'var(--bg-sidebar)',
-              borderColor: 'var(--border-color)',
-            }}
+            key="mobile-sidebar-drawer"
+            className="fixed inset-0 z-50 lg:hidden flex"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t.sidebar.mobileNavAria}
           >
-            {sidebarContent}
-          </aside>
-        </div>
-      )}
+            <motion.div
+              variants={backdropVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={FAST_TRANSITION}
+              className="fixed inset-0 bg-black/60 backdrop-blur-[1px]"
+              onClick={onCloseMobile}
+            />
+            <motion.aside
+              variants={drawerLeftVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={DRAWER_TRANSITION}
+              className="relative z-10 w-[284px] max-w-[85vw] h-full border-r flex flex-col shadow-2xl"
+              style={{
+                backgroundColor: 'var(--bg-sidebar)',
+                borderColor: 'var(--border-color)',
+              }}
+            >
+              {renderSidebarContent(true)}
+            </motion.aside>
+          </div>
+        )}
+      </AnimatePresence>
     </>
   );
 };

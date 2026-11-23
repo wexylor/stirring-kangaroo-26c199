@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { User } from '@firebase/auth';
 import { Menu, Plus, X, Sun, Moon } from 'lucide-react';
+import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import type {
   AnalysisReport,
   CloudSyncStatus,
@@ -14,10 +15,10 @@ import type {
 } from './types/notebook';
 import {
   computeLatestContactIso,
-  getEffectiveApiKey,
+  getSavedAnalyzerMode,
   normalizePeople,
   safeStorage,
-  STORAGE_API_KEY,
+  saveAnalyzerMode,
   STORAGE_DATA_PREFIX,
   STORAGE_LANG_KEY,
   STORAGE_PENDING_PREFIX,
@@ -25,6 +26,10 @@ import {
   STORAGE_THEME_KEY,
   uid,
 } from './utils/storage';
+import {
+  shouldUseCloudAi,
+  type AnalyzerPreferenceMode,
+} from './utils/aiPolicy';
 import {
   detectDeviceLanguage,
   detectDeviceTheme,
@@ -50,21 +55,28 @@ import {
 import { createDefaultSampleState, DEMO_SAMPLE_TEXT } from './data/sampleData';
 import {
   deletePersonFromCloud,
+  getFreshIdToken,
   getUserDisplayLabel,
+  isAdminUser,
   isSyntheticLoginEmail,
   logoutFromFirebase,
   reloadFirebaseUser,
   savePersonToCloud,
+  setGlobalAiEnabledInCloud,
   subscribeAuthChanges,
+  subscribeGlobalAiConfig,
   subscribeUserPeople,
   syncPeopleMapToCloud,
   updateUserProfileInCloud,
+  deleteCurrentUserAccount,
 } from './services/firebase';
 import {
   analyzeTextWithGemini,
   askAdvisorWithGemini,
   buildDossierWithGemini,
+  fetchServerAiStatus,
   formatGeminiFallbackReason,
+  toggleAdminSharedAi,
 } from './services/gemini';
 import { AuthScreen } from './components/AuthScreen';
 import { Sidebar } from './components/Sidebar';
@@ -76,6 +88,7 @@ import { RawNotesHistory } from './components/RawNotesHistory';
 import { OfflineIndicator } from './components/PWAInstallButton';
 import {
   AccountModal,
+  DeleteAccountModal,
   AddColumnModal,
   AddMeetingModal,
   AddPersonModal,
@@ -83,6 +96,12 @@ import {
   ConfirmModal,
   SummaryModal,
 } from './components/Modals';
+import {
+  FAST_TRANSITION,
+  WINDOW_TRANSITION,
+  toastVariants,
+  windowEnterVariants,
+} from './utils/motionPresets';
 
 interface PendingSyncQueue {
   upsertIds: string[];
@@ -148,9 +167,13 @@ export default function App() {
   const [advisorAnswer, setAdvisorAnswer] = useState('');
   const [isAskingAdvisor, setIsAskingAdvisor] = useState(false);
 
-  const [activeEngine, setActiveEngine] = useState<'gemini' | 'local'>(() =>
-    getEffectiveApiKey() ? 'gemini' : 'local'
+  const [analyzerMode, setAnalyzerMode] = useState<AnalyzerPreferenceMode>(() =>
+    getSavedAnalyzerMode()
   );
+  const [sharedAiEnabled, setSharedAiEnabled] = useState<boolean>(true);
+  const [serverKeyConfigured, setServerKeyConfigured] = useState<boolean>(false);
+  const [isTogglingSharedAi, setIsTogglingSharedAi] = useState<boolean>(false);
+  const [activeEngine, setActiveEngine] = useState<'gemini' | 'local'>('local');
   const [cloudStatus, setCloudStatus] = useState<CloudSyncStatus>('local');
   const [pendingQueue, setPendingQueue] = useState<PendingSyncQueue>({
     upsertIds: [],
@@ -160,6 +183,7 @@ export default function App() {
 
   // Modals
   const [accountOpen, setAccountOpen] = useState(false);
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
   const [addPersonOpen, setAddPersonOpen] = useState(false);
   const [addColumnOpen, setAddColumnOpen] = useState(false);
   const [addMeetingOpen, setAddMeetingOpen] = useState(false);
@@ -218,6 +242,54 @@ export default function App() {
   useEffect(() => {
     document.documentElement.setAttribute('lang', lang);
   }, [lang]);
+
+  useEffect(() => {
+    let active = true;
+    fetchServerAiStatus().then((status) => {
+      if (!active) return;
+      setSharedAiEnabled(status.sharedAiEnabled);
+      setServerKeyConfigured(status.serverKeyConfigured);
+    });
+
+    let unsubGlobalAi: (() => void) | null = null;
+    try {
+      unsubGlobalAi = subscribeGlobalAiConfig(
+        (cfg) => {
+          if (!active) return;
+          setSharedAiEnabled(cfg.sharedAiEnabled);
+        },
+        () => {
+          // If appConfig isn't readable yet in RTDB rules, keep server status
+        }
+      );
+    } catch {
+      // Ignore Firebase initialization failure
+    }
+
+    return () => {
+      active = false;
+      unsubGlobalAi?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    const syncEngineIndicator = () => {
+      const decision = shouldUseCloudAi({
+        preferenceMode: analyzerMode,
+        isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
+        sharedAiEnabled,
+        serverKeyConfigured,
+      });
+      setActiveEngine(decision.useCloud ? 'gemini' : 'local');
+    };
+    syncEngineIndicator();
+    window.addEventListener('online', syncEngineIndicator);
+    window.addEventListener('offline', syncEngineIndicator);
+    return () => {
+      window.removeEventListener('online', syncEngineIndicator);
+      window.removeEventListener('offline', syncEngineIndicator);
+    };
+  }, [analyzerMode, sharedAiEnabled, serverKeyConfigured]);
 
   const handleToggleTheme = useCallback(() => {
     setTheme((prev) => {
@@ -409,6 +481,63 @@ export default function App() {
     }
     return res;
   }, [currentUser]);
+
+  const handleToggleSharedAi = useCallback(
+    async (nextEnabled: boolean) => {
+      if (!currentUser || !isAdminUser(currentUser) || isTogglingSharedAi) return;
+      setIsTogglingSharedAi(true);
+      try {
+        const token = await getFreshIdToken(currentUser);
+        if (!token) {
+          throw new Error('NO_TOKEN');
+        }
+        await toggleAdminSharedAi(token, nextEnabled);
+        setSharedAiEnabled(nextEnabled);
+
+        try {
+          await setGlobalAiEnabledInCloud(currentUser, nextEnabled);
+          showToast(
+            nextEnabled
+              ? tRef.current.account.adminToggleSavedOn
+              : tRef.current.account.adminToggleSavedOff,
+            'success'
+          );
+        } catch {
+          showToast(tRef.current.account.adminToggleServerOnlyNote, 'warning');
+        }
+      } catch {
+        showToast(tRef.current.account.adminToggleError, 'error');
+      } finally {
+        setIsTogglingSharedAi(false);
+      }
+    },
+    [currentUser, isTogglingSharedAi, showToast]
+  );
+
+  const handleDeleteAccount = useCallback(
+    async (currentPassword: string) => {
+      if (!currentUser) return;
+      const deletedUid = currentUser.uid;
+
+      await deleteCurrentUserAccount(currentUser, currentPassword, () => {
+        if (cloudUnsubRef.current) {
+          cloudUnsubRef.current();
+          cloudUnsubRef.current = null;
+        }
+      });
+
+      safeStorage.removeItem(STORAGE_DATA_PREFIX + deletedUid);
+      safeStorage.removeItem(STORAGE_TAB_PREFIX + deletedUid);
+      safeStorage.removeItem(STORAGE_PENDING_PREFIX + deletedUid);
+      setPeople([]);
+      setActivePersonId(null);
+      setPendingQueue({ upsertIds: [], deleteIds: [] });
+      setDeleteAccountOpen(false);
+      setAccountOpen(false);
+      showToast(tRef.current.deleteAccount.deletedToast, 'success');
+    },
+    [currentUser, showToast]
+  );
 
   // Auth & RTDB subscription
   useEffect(() => {
@@ -709,19 +838,29 @@ export default function App() {
     let fallbackReason = '';
 
     try {
-      if (!navigator.onLine) {
-        throw new Error('OFFLINE');
-      }
-      if (!getEffectiveApiKey()) {
-        throw new Error('NO_API_KEY');
+      const policy = shouldUseCloudAi({
+        preferenceMode: analyzerMode,
+        isOnline: navigator.onLine,
+        sharedAiEnabled,
+        serverKeyConfigured,
+      });
+      if (!policy.useCloud) {
+        throw new Error(policy.reason || 'NO_API_KEY');
       }
       result = await analyzeTextWithGemini(activePerson, rawText, people);
       engineUsed = 'gemini';
     } catch (err) {
       engineUsed = 'local';
+      const errCode = err instanceof Error ? err.message : '';
+      if (errCode === 'AI_DISABLED_BY_ADMIN') {
+        setSharedAiEnabled(false);
+      }
       const reasonMsg = formatGeminiFallbackReason(err, lang);
-      // Show explicit fallback toast if user expected Gemini (had API key or hit network/timeout)
-      if (err instanceof Error && err.message !== 'NO_API_KEY') {
+      if (
+        errCode &&
+        errCode !== 'NO_API_KEY' &&
+        errCode !== 'LOCAL_ONLY_MODE'
+      ) {
         usedFallback = true;
         fallbackReason = reasonMsg;
         showToast(reasonMsg, 'warning');
@@ -928,15 +1067,25 @@ export default function App() {
     setAdvisorAnswer('');
 
     try {
-      if (!navigator.onLine || !getEffectiveApiKey()) {
-        throw new Error('NO_API_KEY');
+      const policy = shouldUseCloudAi({
+        preferenceMode: analyzerMode,
+        isOnline: navigator.onLine,
+        sharedAiEnabled,
+        serverKeyConfigured,
+      });
+      if (!policy.useCloud) {
+        throw new Error(policy.reason || 'NO_API_KEY');
       }
       const answer = await askAdvisorWithGemini(activePerson, q, lang);
       setActiveEngine('gemini');
       setAdvisorAnswer(answer);
     } catch (err) {
       setActiveEngine('local');
-      if (err instanceof Error && err.message !== 'NO_API_KEY') {
+      const errCode = err instanceof Error ? err.message : '';
+      if (errCode === 'AI_DISABLED_BY_ADMIN') {
+        setSharedAiEnabled(false);
+      }
+      if (errCode && errCode !== 'NO_API_KEY' && errCode !== 'LOCAL_ONLY_MODE') {
         showToast(formatGeminiFallbackReason(err, lang), 'warning');
       }
       setAdvisorAnswer(buildLocalAdvisorAnswer(activePerson, q, lang));
@@ -955,14 +1104,24 @@ export default function App() {
     let engineUsed: 'gemini' | 'local' = 'gemini';
 
     try {
-      if (!navigator.onLine || !getEffectiveApiKey()) {
-        throw new Error('NO_API_KEY');
+      const policy = shouldUseCloudAi({
+        preferenceMode: analyzerMode,
+        isOnline: navigator.onLine,
+        sharedAiEnabled,
+        serverKeyConfigured,
+      });
+      if (!policy.useCloud) {
+        throw new Error(policy.reason || 'NO_API_KEY');
       }
       data = await buildDossierWithGemini(mode, activePerson, people, lang);
       engineUsed = 'gemini';
     } catch (err) {
       engineUsed = 'local';
-      if (err instanceof Error && err.message !== 'NO_API_KEY') {
+      const errCode = err instanceof Error ? err.message : '';
+      if (errCode === 'AI_DISABLED_BY_ADMIN') {
+        setSharedAiEnabled(false);
+      }
+      if (errCode && errCode !== 'NO_API_KEY' && errCode !== 'LOCAL_ONLY_MODE') {
         showToast(formatGeminiFallbackReason(err, lang), 'warning');
       }
       data = buildDossierLocally(mode, activePerson, people);
@@ -1105,28 +1264,51 @@ export default function App() {
   const pendingCount = pendingQueue.upsertIds.length + pendingQueue.deleteIds.length;
 
   return (
-    <LanguageProvider lang={lang} onChangeLang={handleChangeLanguage}>
-      {authLoading ? (
-        <div className="min-h-screen flex flex-col items-center justify-center gap-3 p-6">
-          <div className="w-7 h-7 rounded-full border-2 border-zinc-500/30 border-t-zinc-400 animate-spin" />
-          <div className="text-[13px]" style={{ color: 'var(--text-secondary)' }}>
-            {t.common.loading}
-          </div>
-        </div>
-      ) : !currentUser && !isGuestMode ? (
-        <AuthScreen
-          initialError={authError}
-          theme={theme}
-          onToggleTheme={handleToggleTheme}
-          onContinueGuest={() => {
-            setIsGuestMode(true);
-            loadLocalScope('guest');
-            showToast(t.toasts.guestMode, 'info');
-          }}
-          onToast={showToast}
-        />
-      ) : (
-        <div className="min-h-screen flex">
+    <MotionConfig reducedMotion="user">
+      <LanguageProvider lang={lang} onChangeLang={handleChangeLanguage}>
+        {authLoading ? (
+          <motion.div
+            key="screen-loading"
+            variants={windowEnterVariants}
+            initial="initial"
+            animate="animate"
+            transition={FAST_TRANSITION}
+            className="min-h-screen flex flex-col items-center justify-center gap-3 p-6"
+          >
+            <div className="w-7 h-7 rounded-full border-2 border-zinc-500/30 border-t-zinc-400 animate-spin" />
+            <div className="text-[13px]" style={{ color: 'var(--text-secondary)' }}>
+              {t.common.loading}
+            </div>
+          </motion.div>
+        ) : !currentUser && !isGuestMode ? (
+          <motion.div
+            key="screen-auth"
+            variants={windowEnterVariants}
+            initial="initial"
+            animate="animate"
+            transition={WINDOW_TRANSITION}
+          >
+            <AuthScreen
+              initialError={authError}
+              theme={theme}
+              onToggleTheme={handleToggleTheme}
+              onContinueGuest={() => {
+                setIsGuestMode(true);
+                loadLocalScope('guest');
+                showToast(t.toasts.guestMode, 'info');
+              }}
+              onToast={showToast}
+            />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="screen-workspace"
+            variants={windowEnterVariants}
+            initial="initial"
+            animate="animate"
+            transition={WINDOW_TRANSITION}
+            className="min-h-screen flex"
+          >
           <Sidebar
             people={people}
             activePersonId={activePersonId}
@@ -1200,9 +1382,14 @@ export default function App() {
               </div>
             </header>
 
-            <main className="max-w-[960px] w-full mx-auto px-4 sm:px-8 py-6 sm:py-8 flex-1 flex flex-col gap-6">
+            <main className="max-w-[960px] w-full mx-auto px-4 sm:px-8 py-6 sm:py-8 flex-1 flex flex-col">
               {!activePerson ? (
-                <div
+                <motion.div
+                  key="person-empty"
+                  variants={windowEnterVariants}
+                  initial="initial"
+                  animate="animate"
+                  transition={FAST_TRANSITION}
                   className="rounded-lg border p-10 text-center my-auto"
                   style={{
                     backgroundColor: 'var(--bg-surface)',
@@ -1255,9 +1442,16 @@ export default function App() {
                       {t.emptyState.loadSample}
                     </button>
                   </div>
-                </div>
+                </motion.div>
               ) : (
-                <>
+                <motion.div
+                  key={activePerson.id}
+                  variants={windowEnterVariants}
+                  initial="initial"
+                  animate="animate"
+                  transition={FAST_TRANSITION}
+                  className="flex flex-col gap-6"
+                >
                 <ProfileCard
                   person={activePerson}
                   onRename={(newName) =>
@@ -1483,7 +1677,7 @@ export default function App() {
                     showToast(t.toasts.noteDeleted, 'info');
                   }}
                 />
-                </>
+                </motion.div>
               )}
             </main>
           </div>
@@ -1495,6 +1689,11 @@ export default function App() {
             authRevision={authRevision}
             pendingCount={pendingCount}
             isSyncing={isSyncing}
+            isAdmin={isAdminUser(currentUser)}
+            sharedAiEnabled={sharedAiEnabled}
+            serverKeyConfigured={serverKeyConfigured}
+            isTogglingSharedAi={isTogglingSharedAi}
+            onToggleSharedAi={handleToggleSharedAi}
             onClose={() => setAccountOpen(false)}
             onRefreshAccount={handleRefreshAccountStatus}
             onManualSync={handleManualSync}
@@ -1511,7 +1710,24 @@ export default function App() {
                 setIsGuestMode(false);
               }
             }}
+            onRequestDeleteAccount={
+              currentUser
+                ? () => {
+                    setAccountOpen(false);
+                    setDeleteAccountOpen(true);
+                  }
+                : undefined
+            }
             onToast={showToast}
+          />
+
+          <DeleteAccountModal
+            open={deleteAccountOpen}
+            user={currentUser}
+            contactsCount={people.length}
+            onClose={() => setDeleteAccountOpen(false)}
+            onExportBackup={handleExportJson}
+            onConfirmDelete={handleDeleteAccount}
           />
 
           <AddPersonModal
@@ -1535,24 +1751,18 @@ export default function App() {
 
           <ApiSettingsModal
             open={apiSettingsOpen}
-            currentKey={safeStorage.getItem(STORAGE_API_KEY) || ''}
+            mode={analyzerMode}
+            sharedAiEnabled={sharedAiEnabled}
+            serverKeyConfigured={serverKeyConfigured}
             onClose={() => setApiSettingsOpen(false)}
-            onSaveKey={(val) => {
-              if (val) {
-                safeStorage.setItem(STORAGE_API_KEY, val);
-                setActiveEngine('gemini');
-                showToast(t.toasts.apiSaved, 'success');
-              } else {
-                safeStorage.removeItem(STORAGE_API_KEY);
-                setActiveEngine('local');
-                showToast(t.toasts.apiCleared, 'info');
-              }
+            onSaveMode={(nextMode) => {
+              setAnalyzerMode(nextMode);
+              saveAnalyzerMode(nextMode);
+              showToast(
+                nextMode === 'local' ? t.toasts.modeSavedLocal : t.toasts.modeSavedAuto,
+                'success'
+              );
               setApiSettingsOpen(false);
-            }}
-            onClearKey={() => {
-              safeStorage.removeItem(STORAGE_API_KEY);
-              setActiveEngine('local');
-              showToast(t.toasts.userKeyCleared, 'info');
             }}
           />
 
@@ -1591,46 +1801,55 @@ export default function App() {
               showToast(t.toasts.txtDownloaded, 'success');
             }}
           />
-        </div>
-      )}
+          </motion.div>
+        )}
 
-      {/* Toast stack */}
-      <div className="fixed bottom-5 right-5 z-40 flex flex-col gap-2 max-w-[370px] w-[calc(100%-40px)] pointer-events-none">
-        {toasts.map((toastItem) => {
-          const borderCol =
-            toastItem.type === 'success'
-              ? 'var(--success-border)'
-              : toastItem.type === 'warning'
-              ? 'var(--warning-border)'
-              : toastItem.type === 'error'
-              ? 'var(--danger-border)'
-              : 'var(--border-color)';
-          return (
-            <div
-              key={toastItem.id}
-              role="status"
-              className="pointer-events-auto px-3.5 py-3 rounded-xl border shadow-lg text-[13px] font-medium flex items-center justify-between gap-2.5 animate-pop-in"
-              style={{
-                backgroundColor: 'var(--bg-elevated)',
-                borderColor: borderCol,
-                color: 'var(--text-primary)',
-              }}
-            >
-              <span>{toastItem.message}</span>
-              <button
-                type="button"
-                aria-label={t.common.closeNotice}
-                onClick={() =>
-                  setToasts((prev) => prev.filter((item) => item.id !== toastItem.id))
-                }
-                className="opacity-70 hover:opacity-100 p-0.5"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          );
-        })}
-      </div>
-    </LanguageProvider>
+        {/* Toast stack */}
+        <div className="fixed bottom-5 right-5 z-40 flex flex-col gap-2 max-w-[370px] w-[calc(100%-40px)] pointer-events-none">
+          <AnimatePresence initial={false}>
+            {toasts.map((toastItem) => {
+              const borderCol =
+                toastItem.type === 'success'
+                  ? 'var(--success-border)'
+                  : toastItem.type === 'warning'
+                  ? 'var(--warning-border)'
+                  : toastItem.type === 'error'
+                  ? 'var(--danger-border)'
+                  : 'var(--border-color)';
+              return (
+                <motion.div
+                  key={toastItem.id}
+                  layout
+                  role="status"
+                  variants={toastVariants}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  transition={FAST_TRANSITION}
+                  className="pointer-events-auto px-3.5 py-3 rounded-xl border shadow-lg text-[13px] font-medium flex items-center justify-between gap-2.5"
+                  style={{
+                    backgroundColor: 'var(--bg-elevated)',
+                    borderColor: borderCol,
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  <span>{toastItem.message}</span>
+                  <button
+                    type="button"
+                    aria-label={t.common.closeNotice}
+                    onClick={() =>
+                      setToasts((prev) => prev.filter((item) => item.id !== toastItem.id))
+                    }
+                    className="opacity-70 hover:opacity-100 p-0.5"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+        </div>
+      </LanguageProvider>
+    </MotionConfig>
   );
 }

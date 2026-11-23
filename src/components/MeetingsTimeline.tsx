@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Phone, Users, MessageCircle, Calendar, Trash2 } from 'lucide-react';
+import { ChevronDown, Phone, Users, MessageCircle, Calendar, Trash2 } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 import type { MeetingType, Person } from '../types/notebook';
 import { formatShortDate } from '../utils/storage';
 import { formatDaysForLang, getDaysSinceLastContact } from '../utils/dateReminders';
 import { useI18n } from '../utils/LanguageContext';
+import { FAST_TRANSITION, collapseVariants } from '../utils/motionPresets';
 
 interface MeetingsTimelineProps {
   person: Person;
@@ -41,6 +43,7 @@ export const MeetingsTimeline: React.FC<MeetingsTimelineProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <button
           type="button"
+          aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
           className="flex items-center gap-2 text-sm font-semibold text-left hover:opacity-80 transition-opacity"
         >
@@ -48,11 +51,10 @@ export const MeetingsTimeline: React.FC<MeetingsTimelineProps> = ({
           <span className="text-xs font-normal tabular-nums" style={{ color: 'var(--text-muted)' }}>
             {t.meetings.countAndLast(meetings.length, whenLast)}
           </span>
-          {open ? (
-            <ChevronUp className="w-3.5 h-3.5" style={{ color: 'var(--text-muted)' }} />
-          ) : (
-            <ChevronDown className="w-3.5 h-3.5" style={{ color: 'var(--text-muted)' }} />
-          )}
+          <ChevronDown
+            className={`w-3.5 h-3.5 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+            style={{ color: 'var(--text-muted)' }}
+          />
         </button>
 
         <button
@@ -69,54 +71,66 @@ export const MeetingsTimeline: React.FC<MeetingsTimelineProps> = ({
         </button>
       </div>
 
-      {open && (
-        <div className="divide-y" style={{ borderColor: 'var(--border-color)' }}>
-          {meetings.length === 0 ? (
-            <p className="text-[13px] py-2" style={{ color: 'var(--text-muted)' }}>
-              {t.meetings.empty}
-            </p>
-          ) : (
-            meetings.map((m) => {
-              const IconComp = TYPE_ICONS[m.type] || TYPE_ICONS.meeting;
-              const typeLabel = t.meetings.types[m.type] || t.meetings.types.meeting;
-              return (
-                <div
-                  key={m.id}
-                  className="group py-2.5 flex items-start justify-between gap-3 text-[13px]"
-                  style={{ borderColor: 'var(--border-color)' }}
-                >
-                  <div className="flex items-start gap-2.5 min-w-0">
-                    <span className="shrink-0 mt-1" style={{ color: 'var(--text-muted)' }}>
-                      <IconComp className="w-3.5 h-3.5" />
-                    </span>
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2 text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>
-                        <span className="font-medium tabular-nums" style={{ color: 'var(--text-primary)' }}>
-                          {formatShortDate(m.date, lang)}
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="meetings-body"
+            variants={collapseVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={FAST_TRANSITION}
+            className="overflow-hidden"
+          >
+            <div className="divide-y" style={{ borderColor: 'var(--border-color)' }}>
+              {meetings.length === 0 ? (
+                <p className="text-[13px] py-2" style={{ color: 'var(--text-muted)' }}>
+                  {t.meetings.empty}
+                </p>
+              ) : (
+                meetings.map((m) => {
+                  const IconComp = TYPE_ICONS[m.type] || TYPE_ICONS.meeting;
+                  const typeLabel = t.meetings.types[m.type] || t.meetings.types.meeting;
+                  return (
+                    <div
+                      key={m.id}
+                      className="group py-2.5 flex items-start justify-between gap-3 text-[13px]"
+                      style={{ borderColor: 'var(--border-color)' }}
+                    >
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <span className="shrink-0 mt-1" style={{ color: 'var(--text-muted)' }}>
+                          <IconComp className="w-3.5 h-3.5" />
                         </span>
-                        <span aria-hidden="true">·</span>
-                        <span>{typeLabel}</span>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2 text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>
+                            <span className="font-medium tabular-nums" style={{ color: 'var(--text-primary)' }}>
+                              {formatShortDate(m.date, lang)}
+                            </span>
+                            <span aria-hidden="true">·</span>
+                            <span>{typeLabel}</span>
+                          </div>
+                          <p style={{ color: 'var(--text-secondary)' }}>{m.summary}</p>
+                        </div>
                       </div>
-                      <p style={{ color: 'var(--text-secondary)' }}>{m.summary}</p>
-                    </div>
-                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => onDeleteMeeting(m.id)}
-                    aria-label={t.meetings.deleteAria}
-                    title={t.common.delete}
-                    className="p-1 rounded opacity-40 group-hover:opacity-100 focus:opacity-100 hover:bg-[var(--bg-hover)] shrink-0 transition-opacity"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              );
-            })
-          )}
-        </div>
-      )}
+                      <button
+                        type="button"
+                        onClick={() => onDeleteMeeting(m.id)}
+                        aria-label={t.meetings.deleteAria}
+                        title={t.common.delete}
+                        className="p-1 rounded opacity-40 group-hover:opacity-100 focus:opacity-100 hover:bg-[var(--bg-hover)] shrink-0 transition-opacity"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </section>
   );
 };

@@ -6,7 +6,19 @@ import {
   registerWithLoginOrEmail,
   sendPasswordResetForEmail,
 } from '../services/firebase';
+import { AnimatePresence, motion } from 'motion/react';
 import { useI18n } from '../utils/LanguageContext';
+import {
+  FAST_TRANSITION,
+  TAB_SPRING_TRANSITION,
+  WINDOW_TRANSITION,
+  collapseVariants,
+  getAuthModeDirection,
+  getDirectionalSlideVariants,
+  modalPanelVariants,
+} from '../utils/motionPresets';
+
+const authSlideVariants = getDirectionalSlideVariants(16);
 
 interface AuthScreenProps {
   initialError?: string;
@@ -27,6 +39,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 }) => {
   const { t } = useI18n();
   const [mode, setMode] = useState<AuthViewMode>('login');
+  const [modeDirection, setModeDirection] = useState<1 | -1>(1);
   const [displayName, setDisplayName] = useState('');
   const [loginInput, setLoginInput] = useState('');
   const [password, setPassword] = useState('');
@@ -37,6 +50,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [submitting, setSubmitting] = useState(false);
 
   const switchMode = (nextMode: AuthViewMode) => {
+    setModeDirection(getAuthModeDirection(mode, nextMode));
     setMode(nextMode);
     setErrorMsg('');
     setResetSuccessMsg('');
@@ -100,8 +114,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-8">
-      <div
-        className="w-full max-w-[400px] rounded-xl p-6 sm:p-7 border animate-pop-in"
+      <motion.div
+        variants={modalPanelVariants}
+        initial="initial"
+        animate="animate"
+        transition={WINDOW_TRANSITION}
+        className="w-full max-w-[400px] rounded-xl p-6 sm:p-7 border"
         style={{
           backgroundColor: 'var(--bg-surface)',
           borderColor: 'var(--border-color)',
@@ -146,66 +164,128 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           </p>
         </div>
 
-        {mode !== 'forgot' && (
-          <div
-            className="grid grid-cols-2 gap-1 p-1 rounded-lg mb-4"
-            style={{ backgroundColor: 'var(--bg-elevated)' }}
-          >
-            <button
-              type="button"
-              onClick={() => switchMode('login')}
-              className="py-1.5 px-3 rounded-md text-[13px] font-medium transition-colors"
-              style={{
-                backgroundColor: mode === 'login' ? 'var(--bg-surface)' : 'transparent',
-                color: mode === 'login' ? 'var(--text-primary)' : 'var(--text-secondary)',
-              }}
+        <AnimatePresence initial={false}>
+          {mode !== 'forgot' && (
+            <motion.div
+              key="auth-tabs"
+              variants={collapseVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={FAST_TRANSITION}
+              className="overflow-hidden mb-4"
             >
-              {t.auth.tabLogin}
-            </button>
-            <button
-              type="button"
-              onClick={() => switchMode('register')}
-              className="py-1.5 px-3 rounded-md text-[13px] font-medium transition-colors"
-              style={{
-                backgroundColor: mode === 'register' ? 'var(--bg-surface)' : 'transparent',
-                color: mode === 'register' ? 'var(--text-primary)' : 'var(--text-secondary)',
-              }}
+              <div
+                className="grid grid-cols-2 gap-1 p-1 rounded-lg"
+                style={{ backgroundColor: 'var(--bg-elevated)' }}
+              >
+                <button
+                  type="button"
+                  onClick={() => switchMode('login')}
+                  className="relative py-1.5 px-3 rounded-md text-[13px] font-medium transition-colors"
+                  style={{
+                    color: mode === 'login' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  }}
+                >
+                  {mode === 'login' && (
+                    <motion.span
+                      layoutId="authModeTab"
+                      transition={TAB_SPRING_TRANSITION}
+                      className="absolute inset-0 rounded-md"
+                      style={{ backgroundColor: 'var(--bg-surface)' }}
+                    />
+                  )}
+                  <span className="relative z-10">{t.auth.tabLogin}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => switchMode('register')}
+                  className="relative py-1.5 px-3 rounded-md text-[13px] font-medium transition-colors"
+                  style={{
+                    color: mode === 'register' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  }}
+                >
+                  {mode === 'register' && (
+                    <motion.span
+                      layoutId="authModeTab"
+                      transition={TAB_SPRING_TRANSITION}
+                      className="absolute inset-0 rounded-md"
+                      style={{ backgroundColor: 'var(--bg-surface)' }}
+                    />
+                  )}
+                  <span className="relative z-10">{t.auth.tabRegister}</span>
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence initial={false}>
+          {errorMsg && (
+            <motion.div
+              key="auth-error"
+              variants={collapseVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={FAST_TRANSITION}
+              className="overflow-hidden mb-3.5"
             >
-              {t.auth.tabRegister}
-            </button>
-          </div>
-        )}
+              <div
+                className="p-3 rounded-lg text-[12.5px] leading-relaxed border break-words"
+                role="alert"
+                style={{
+                  backgroundColor: 'var(--danger-bg)',
+                  borderColor: 'var(--danger-border)',
+                  color: 'var(--danger-text)',
+                }}
+              >
+                {errorMsg}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {errorMsg && (
-          <div
-            className="p-3 rounded-lg text-[12.5px] leading-relaxed mb-3.5 border break-words"
-            role="alert"
-            style={{
-              backgroundColor: 'var(--danger-bg)',
-              borderColor: 'var(--danger-border)',
-              color: 'var(--danger-text)',
-            }}
-          >
-            {errorMsg}
-          </div>
-        )}
+        <AnimatePresence initial={false}>
+          {resetSuccessMsg && (
+            <motion.div
+              key="auth-reset-success"
+              variants={collapseVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={FAST_TRANSITION}
+              className="overflow-hidden mb-3.5"
+            >
+              <div
+                className="p-3 rounded-lg text-[12.5px] leading-relaxed border"
+                role="status"
+                style={{
+                  backgroundColor: 'var(--success-bg)',
+                  borderColor: 'var(--success-border)',
+                  color: 'var(--success-text)',
+                }}
+              >
+                {resetSuccessMsg}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {resetSuccessMsg && (
-          <div
-            className="p-3 rounded-lg text-[12.5px] leading-relaxed mb-3.5 border"
-            role="status"
-            style={{
-              backgroundColor: 'var(--success-bg)',
-              borderColor: 'var(--success-border)',
-              color: 'var(--success-text)',
-            }}
-          >
-            {resetSuccessMsg}
-          </div>
-        )}
-
-        {mode === 'forgot' ? (
-          <form onSubmit={handleForgotSubmit} className="space-y-3.5">
+        <div className="relative overflow-hidden">
+          <AnimatePresence mode="popLayout" initial={false} custom={modeDirection}>
+            {mode === 'forgot' ? (
+              <motion.form
+                key="auth-form-forgot"
+                custom={modeDirection}
+                variants={authSlideVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={FAST_TRANSITION}
+                onSubmit={handleForgotSubmit}
+                className="space-y-3.5"
+              >
             <div>
               <label
                 htmlFor="resetEmailInput"
@@ -255,9 +335,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               <ArrowLeft className="w-4 h-4" />
               <span>{t.auth.backToLogin}</span>
             </button>
-          </form>
-        ) : (
-          <form onSubmit={handleAuthSubmit} className="space-y-3.5">
+              </motion.form>
+            ) : (
+              <motion.form
+                key={`auth-form-${mode}`}
+                custom={modeDirection}
+                variants={authSlideVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={FAST_TRANSITION}
+                onSubmit={handleAuthSubmit}
+                className="space-y-3.5"
+              >
             {mode === 'register' && (
               <div>
                 <label
@@ -376,8 +466,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 ? t.auth.createAccount
                 : t.auth.signIn}
             </button>
-          </form>
-        )}
+              </motion.form>
+            )}
+          </AnimatePresence>
+        </div>
 
         <div className="flex items-center gap-2.5 my-4 text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
           <div className="flex-1 h-px" style={{ backgroundColor: 'var(--border-color)' }} />
@@ -397,7 +489,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         >
           {t.auth.continueGuest}
         </button>
-      </div>
+      </motion.div>
     </div>
   );
 };

@@ -1,5 +1,10 @@
 import type { MeetingEntry, Person } from '../types/notebook';
 import type { AppLang } from './preferences';
+import {
+  resolveAnalyzerMode,
+  STORAGE_ANALYZER_MODE,
+  type AnalyzerPreferenceMode,
+} from './aiPolicy';
 
 const memoryStore = new Map<string, string>();
 let persistentAvailable = false;
@@ -53,7 +58,6 @@ export const safeStorage = {
 export const STORAGE_DATA_PREFIX = 'smart_people_notebook_data_v6_';
 export const STORAGE_TAB_PREFIX = 'smart_people_notebook_tab_v6_';
 export const STORAGE_PENDING_PREFIX = 'smart_people_notebook_pending_v1_';
-export const STORAGE_API_KEY = 'smart_people_notebook_gemini_key';
 export const STORAGE_THEME_KEY = 'smart_people_notebook_theme';
 export const STORAGE_LANG_KEY = 'smart_people_notebook_lang';
 
@@ -304,7 +308,10 @@ export function normalizePeople(rawList: unknown): Person[] {
   });
 }
 
-export function getEffectiveApiKey(): string {
-  const saved = safeStorage.getItem(STORAGE_API_KEY) || '';
-  return saved.trim();
+export function getSavedAnalyzerMode(): AnalyzerPreferenceMode {
+  return resolveAnalyzerMode(safeStorage.getItem(STORAGE_ANALYZER_MODE));
+}
+
+export function saveAnalyzerMode(mode: AnalyzerPreferenceMode): void {
+  safeStorage.setItem(STORAGE_ANALYZER_MODE, mode);
 }

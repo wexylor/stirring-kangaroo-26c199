@@ -9,7 +9,16 @@ import {
   AlertTriangle,
   ExternalLink,
   Globe,
+  Trash2,
+  Download,
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
+  Cpu,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
+import type { AnalyzerPreferenceMode } from '../utils/aiPolicy';
 import type { DossierData, MeetingType } from '../types/notebook';
 import { AVATAR_COLORS, DEFAULT_GROUPS } from '../data/sampleData';
 import {
@@ -28,7 +37,30 @@ import {
 } from '../utils/preferences';
 import { useI18n } from '../utils/LanguageContext';
 import { translateGroupLabel } from '../utils/i18n';
+import {
+  canAdvanceDeleteStep1,
+  canAdvanceDeleteStep2,
+  canSubmitDeleteStep3,
+  getDeleteConfirmKeyword,
+  getNextDeleteStep,
+  getPrevDeleteStep,
+  type DeleteAccountStep,
+} from '../utils/accountDelete';
+import { AnimatePresence, motion } from 'motion/react';
+import {
+  FAST_TRANSITION,
+  TAB_SPRING_TRANSITION,
+  WINDOW_TRANSITION,
+  backdropVariants,
+  collapseVariants,
+  getDirectionalSlideVariants,
+  getStepDirection,
+  modalPanelVariants,
+  windowEnterVariants,
+} from '../utils/motionPresets';
 import { PWAInstallButton } from './PWAInstallButton';
+
+const stepSlideVariants = getDirectionalSlideVariants(18);
 
 interface ModalBackdropProps {
   open: boolean;
@@ -58,56 +90,70 @@ const ModalWrapper: React.FC<ModalBackdropProps> = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
-  if (!open) return null;
-
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      className="fixed inset-0 z-50 bg-black/65 flex items-center justify-center p-4"
-    >
-      <div
-        className={`w-full rounded-xl border shadow-2xl animate-pop-in ${
-          large
-            ? 'max-w-[740px] max-h-[88vh] flex flex-col overflow-hidden p-0'
-            : 'max-w-[440px] p-5 sm:p-6 max-h-[90vh] overflow-y-auto'
-        }`}
-        style={{
-          backgroundColor: 'var(--bg-surface)',
-          borderColor: 'var(--border-color)',
-        }}
-      >
-        <div
-          className={`flex items-center justify-between gap-3 ${
-            large ? 'px-6 py-4 border-b' : 'mb-4'
-          }`}
-          style={large ? { borderColor: 'var(--border-color)' } : undefined}
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          key="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          variants={backdropVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={FAST_TRANSITION}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) onClose();
+          }}
+          className="fixed inset-0 z-50 bg-black/65 backdrop-blur-[2px] flex items-center justify-center p-4"
         >
-          <div>
-            <h2 className="font-display text-base font-semibold">{title}</h2>
-            {subtitle && (
-              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                {subtitle}
-              </p>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={t.common.closeWindow}
-            className="w-7 h-7 rounded-md inline-flex items-center justify-center transition-colors hover:bg-[var(--bg-hover)]"
-            style={{ color: 'var(--text-secondary)' }}
+          <motion.div
+            key="modal-panel"
+            variants={modalPanelVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={WINDOW_TRANSITION}
+            className={`w-full rounded-xl border shadow-2xl ${
+              large
+                ? 'max-w-[740px] max-h-[88vh] flex flex-col overflow-hidden p-0'
+                : 'max-w-[440px] p-5 sm:p-6 max-h-[90vh] overflow-y-auto'
+            }`}
+            style={{
+              backgroundColor: 'var(--bg-surface)',
+              borderColor: 'var(--border-color)',
+            }}
           >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+            <div
+              className={`flex items-center justify-between gap-3 ${
+                large ? 'px-6 py-4 border-b' : 'mb-4'
+              }`}
+              style={large ? { borderColor: 'var(--border-color)' } : undefined}
+            >
+              <div>
+                <h2 className="font-display text-base font-semibold">{title}</h2>
+                {subtitle && (
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                    {subtitle}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label={t.common.closeWindow}
+                className="w-7 h-7 rounded-md inline-flex items-center justify-center transition-colors hover:bg-[var(--bg-hover)]"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-        {children}
-      </div>
-    </div>
+            {children}
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 };
 
@@ -128,6 +174,12 @@ interface AccountModalProps {
   } | null>;
   onManualSync: () => void;
   onLogout: () => void;
+  onRequestDeleteAccount?: () => void;
+  isAdmin?: boolean;
+  sharedAiEnabled?: boolean;
+  serverKeyConfigured?: boolean;
+  isTogglingSharedAi?: boolean;
+  onToggleSharedAi?: (enabled: boolean) => void;
   onToast: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void;
 }
 
@@ -141,6 +193,12 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   onRefreshAccount,
   onManualSync,
   onLogout,
+  onRequestDeleteAccount,
+  isAdmin = false,
+  sharedAiEnabled = true,
+  serverKeyConfigured = false,
+  isTogglingSharedAi = false,
+  onToggleSharedAi,
   onToast,
 }) => {
   const { lang, setLang, t } = useI18n();
@@ -413,26 +471,48 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               </div>
             )}
 
-            {bindMessage && (
-              <div
-                className="p-2.5 rounded-md border text-xs leading-relaxed"
-                style={{
-                  backgroundColor:
-                    bindMessage.type === 'success' ? 'var(--success-bg)' : 'var(--danger-bg)',
-                  borderColor:
-                    bindMessage.type === 'success'
-                      ? 'var(--success-border)'
-                      : 'var(--danger-border)',
-                  color:
-                    bindMessage.type === 'success' ? 'var(--success-text)' : 'var(--danger-text)',
-                }}
-              >
-                {bindMessage.text}
-              </div>
-            )}
+            <AnimatePresence initial={false}>
+              {bindMessage && (
+                <motion.div
+                  key="bind-message"
+                  variants={collapseVariants}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  transition={FAST_TRANSITION}
+                  className="overflow-hidden"
+                >
+                  <div
+                    className="p-2.5 rounded-md border text-xs leading-relaxed"
+                    style={{
+                      backgroundColor:
+                        bindMessage.type === 'success' ? 'var(--success-bg)' : 'var(--danger-bg)',
+                      borderColor:
+                        bindMessage.type === 'success'
+                          ? 'var(--success-border)'
+                          : 'var(--danger-border)',
+                      color:
+                        bindMessage.type === 'success' ? 'var(--success-text)' : 'var(--danger-text)',
+                    }}
+                  >
+                    {bindMessage.text}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-            {(hasSyntheticLogin || showChangeEmail) && (
-              <form onSubmit={handleBindEmail} className="space-y-2.5 pt-1">
+            <AnimatePresence initial={false}>
+              {(hasSyntheticLogin || showChangeEmail) && (
+                <motion.form
+                  key="bind-email-form"
+                  variants={collapseVariants}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  transition={FAST_TRANSITION}
+                  onSubmit={handleBindEmail}
+                  className="space-y-2.5 pt-1 overflow-hidden"
+                >
                 <div>
                   <label
                     htmlFor="bindEmailInput"
@@ -488,14 +568,88 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                 >
                   {binding ? t.account.sending : t.account.bindEmailBtn}
                 </button>
-              </form>
-            )}
+              </motion.form>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       ) : (
         <div className="space-y-3">
           <p className="text-[13px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
             {t.account.localModeDesc}
+          </p>
+        </div>
+      )}
+
+      {user && isAdmin && onToggleSharedAi && (
+        <div
+          className="mt-4 p-3.5 rounded-lg border space-y-2.5"
+          style={{
+            backgroundColor: 'var(--bg-elevated)',
+            borderColor: sharedAiEnabled ? 'var(--success-border)' : 'var(--border-color)',
+          }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-xs font-semibold">
+              <ShieldCheck
+                className="w-4 h-4 shrink-0"
+                style={{ color: sharedAiEnabled ? 'var(--success-text)' : 'var(--text-secondary)' }}
+              />
+              <span>{t.account.adminTitle}</span>
+            </div>
+            <span
+              className="px-2 py-0.5 rounded text-[11px] font-medium border"
+              style={{
+                backgroundColor: 'var(--bg-surface)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              {t.account.adminBadge}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 pt-0.5">
+            <div className="min-w-0">
+              <div className="text-[13px] font-medium">{t.account.adminSharedAiLabel}</div>
+              <div className="text-[11.5px] mt-0.5" style={{ color: serverKeyConfigured ? 'var(--success-text)' : 'var(--warning-text)' }}>
+                {serverKeyConfigured ? t.account.adminServerKeyReady : t.account.adminServerKeyMissing}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              role="switch"
+              aria-checked={sharedAiEnabled}
+              aria-label={t.account.adminSharedAiLabel}
+              disabled={isTogglingSharedAi}
+              onClick={() => onToggleSharedAi(!sharedAiEnabled)}
+              className="inline-flex items-center gap-2 shrink-0 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-colors disabled:opacity-60"
+              style={{
+                backgroundColor: sharedAiEnabled ? 'var(--success-bg)' : 'var(--bg-surface)',
+                borderColor: sharedAiEnabled ? 'var(--success-border)' : 'var(--border-color)',
+                color: sharedAiEnabled ? 'var(--success-text)' : 'var(--text-secondary)',
+              }}
+            >
+              <span
+                aria-hidden="true"
+                className="relative inline-flex h-4 w-7 items-center rounded-full transition-colors"
+                style={{
+                  backgroundColor: sharedAiEnabled ? 'var(--success-text)' : 'var(--text-muted)',
+                }}
+              >
+                <span
+                  className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+                    sharedAiEnabled ? 'translate-x-3.5' : 'translate-x-0.5'
+                  }`}
+                />
+              </span>
+              <span>{sharedAiEnabled ? t.account.adminSharedAiOn : t.account.adminSharedAiOff}</span>
+            </button>
+          </div>
+
+          <p className="text-[11.5px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+            {t.account.adminSharedAiDesc}
           </p>
         </div>
       )}
@@ -561,14 +715,50 @@ export const AccountModal: React.FC<AccountModalProps> = ({
         <PWAInstallButton variant="modal" />
       </div>
 
+      {user && onRequestDeleteAccount && (
+        <div
+          className="mt-4 p-3.5 rounded-lg border flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+          style={{
+            backgroundColor: 'var(--danger-bg)',
+            borderColor: 'var(--danger-border)',
+          }}
+        >
+          <div className="min-w-0">
+            <div
+              className="text-xs font-semibold flex items-center gap-1.5"
+              style={{ color: 'var(--danger-text)' }}
+            >
+              <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+              <span>{t.account.deleteAccountTitle}</span>
+            </div>
+            <p className="text-[11.5px] mt-0.5 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+              {t.account.deleteAccountDesc}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onRequestDeleteAccount}
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium shrink-0 transition-colors hover:opacity-90"
+            style={{
+              backgroundColor: 'var(--bg-surface)',
+              borderColor: 'var(--danger-border)',
+              color: 'var(--danger-text)',
+            }}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>{t.account.deleteAccountBtn}</span>
+          </button>
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-2 mt-5 pt-4 border-t" style={{ borderColor: 'var(--border-color)' }}>
         <button
           type="button"
           onClick={onLogout}
           className="px-3.5 py-2 rounded-md text-[13px] font-medium transition-colors"
           style={{
-            backgroundColor: user ? 'var(--danger-bg)' : 'var(--btn-primary-bg)',
-            color: user ? 'var(--danger-text)' : 'var(--btn-primary-text)',
+            backgroundColor: user ? 'var(--bg-elevated)' : 'var(--btn-primary-bg)',
+            color: user ? 'var(--text-primary)' : 'var(--btn-primary-text)',
           }}
         >
           {user ? t.account.logout : t.account.loginAction}
@@ -584,6 +774,458 @@ export const AccountModal: React.FC<AccountModalProps> = ({
         >
           {t.common.close}
         </button>
+      </div>
+    </ModalWrapper>
+  );
+};
+
+/* ============================================================================
+   1B. DELETE ACCOUNT MODAL (3-STAGE ANTI-ACCIDENT CONFIRMATION)
+   ============================================================================ */
+interface DeleteAccountModalProps {
+  open: boolean;
+  user: User | null;
+  contactsCount: number;
+  onClose: () => void;
+  onExportBackup: () => void;
+  onConfirmDelete: (currentPassword: string) => Promise<void>;
+}
+
+export const DeleteAccountModal: React.FC<DeleteAccountModalProps> = ({
+  open,
+  user,
+  contactsCount,
+  onClose,
+  onExportBackup,
+  onConfirmDelete,
+}) => {
+  const { lang, t } = useI18n();
+  const [step, setStep] = useState<DeleteAccountStep>(1);
+  const [stepDirection, setStepDirection] = useState<1 | -1>(1);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [typedKeyword, setTypedKeyword] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const goToStep = (nextStep: DeleteAccountStep) => {
+    setStepDirection(getStepDirection(step, nextStep));
+    setStep(nextStep);
+  };
+
+  useEffect(() => {
+    if (open) {
+      setStep(1);
+      setStepDirection(1);
+      setAcknowledged(false);
+      setTypedKeyword('');
+      setPassword('');
+      setShowPassword(false);
+      setDeleting(false);
+      setErrorMsg('');
+    }
+  }, [open]);
+
+  if (!user) return null;
+
+  const confirmKeyword = getDeleteConfirmKeyword(lang);
+  const loginShown =
+    user.email && user.email.endsWith('@notebook.app')
+      ? user.email.replace('@notebook.app', '')
+      : user.email || getUserDisplayLabel(user);
+
+  const canStep1 = canAdvanceDeleteStep1(acknowledged);
+  const canStep2 = canAdvanceDeleteStep2(typedKeyword, lang);
+  const canStep3 = canSubmitDeleteStep3(password, deleting);
+
+  const handleFinalSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (deleting) return;
+    if (!password) {
+      setErrorMsg(t.deleteAccount.emptyPasswordError);
+      return;
+    }
+
+    setDeleting(true);
+    setErrorMsg('');
+    try {
+      await onConfirmDelete(password);
+    } catch (err) {
+      const msg =
+        err instanceof Error && !('code' in err)
+          ? err.message
+          : getHumanFirebaseAuthError(err);
+      setErrorMsg(msg);
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <ModalWrapper
+      open={open}
+      onClose={() => {
+        if (!deleting) onClose();
+      }}
+      title={t.deleteAccount.modalTitle}
+      subtitle={t.deleteAccount.stepCounter(step, 3)}
+    >
+      {/* 3-step segmented indicator */}
+      <div className="grid grid-cols-3 gap-1.5 mb-4" aria-hidden="true">
+        {[1, 2, 3].map((idx) => (
+          <div
+            key={idx}
+            className="h-1.5 rounded-full transition-colors"
+            style={{
+              backgroundColor:
+                idx <= step ? 'var(--danger-text)' : 'var(--bg-elevated)',
+              opacity: idx <= step ? (idx === step ? 1 : 0.45) : 1,
+            }}
+          />
+        ))}
+      </div>
+
+      {/* Account identity summary */}
+      <div
+        className="mb-4 px-3 py-2.5 rounded-lg border text-xs flex flex-wrap items-center justify-between gap-2"
+        style={{
+          backgroundColor: 'var(--bg-input)',
+          borderColor: 'var(--border-color)',
+        }}
+      >
+        <div className="min-w-0 truncate">
+          <span style={{ color: 'var(--text-secondary)' }}>
+            {t.deleteAccount.targetAccountLabel}{' '}
+          </span>
+          <span className="font-semibold">{getUserDisplayLabel(user)}</span>
+          {loginShown && loginShown !== getUserDisplayLabel(user) && (
+            <span style={{ color: 'var(--text-muted)' }}> ({loginShown})</span>
+          )}
+        </div>
+        <span className="tabular-nums font-medium" style={{ color: 'var(--text-secondary)' }}>
+          {t.deleteAccount.contactsCountWarning(contactsCount)}
+        </span>
+      </div>
+
+      <div className="relative overflow-hidden">
+        <AnimatePresence mode="popLayout" initial={false} custom={stepDirection}>
+          {step === 1 && (
+            <motion.div
+              key="del-step-1"
+              custom={stepDirection}
+              variants={stepSlideVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={FAST_TRANSITION}
+              className="space-y-4"
+            >
+              <div
+                className="p-3.5 rounded-lg border space-y-2"
+                style={{
+                  backgroundColor: 'var(--danger-bg)',
+                  borderColor: 'var(--danger-border)',
+                }}
+              >
+                <h3 className="text-[13px] font-semibold" style={{ color: 'var(--danger-text)' }}>
+                  {t.deleteAccount.step1Heading}
+                </h3>
+                <p className="text-xs leading-relaxed" style={{ color: 'var(--text-primary)' }}>
+                  {t.deleteAccount.step1Warning}
+                </p>
+              </div>
+
+              <div
+                className="p-3 rounded-lg border space-y-2"
+                style={{
+                  backgroundColor: 'var(--bg-elevated)',
+                  borderColor: 'var(--border-color)',
+                }}
+              >
+                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  {t.deleteAccount.backupHint}
+                </p>
+                <button
+                  type="button"
+                  onClick={onExportBackup}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium hover:bg-[var(--bg-hover)] transition-colors"
+                  style={{
+                    backgroundColor: 'var(--bg-surface)',
+                    borderColor: 'var(--border-color)',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{t.deleteAccount.backupBtn}</span>
+                </button>
+              </div>
+
+              <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={acknowledged}
+                  onChange={(e) => setAcknowledged(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 accent-red-600 cursor-pointer shrink-0"
+                />
+                <span className="text-[13px] leading-snug" style={{ color: 'var(--text-primary)' }}>
+                  {t.deleteAccount.step1Checkbox}
+                </span>
+              </label>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-3.5 py-2 rounded-md border text-[13px] font-medium hover:bg-[var(--bg-hover)]"
+                  style={{
+                    backgroundColor: 'var(--bg-surface)',
+                    borderColor: 'var(--border-color)',
+                  }}
+                >
+                  {t.common.cancel}
+                </button>
+                <button
+                  type="button"
+                  disabled={!canStep1}
+                  onClick={() => goToStep(getNextDeleteStep(1))}
+                  className="px-4 py-2 rounded-md text-[13px] font-medium transition-opacity hover:opacity-90 disabled:opacity-45 disabled:cursor-not-allowed"
+                  style={{
+                    backgroundColor: 'var(--btn-primary-bg)',
+                    color: 'var(--btn-primary-text)',
+                  }}
+                >
+                  {t.deleteAccount.nextBtn}
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {step === 2 && (
+            <motion.form
+              key="del-step-2"
+              custom={stepDirection}
+              variants={stepSlideVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={FAST_TRANSITION}
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (canStep2) {
+                  setErrorMsg('');
+                  goToStep(getNextDeleteStep(2));
+                }
+              }}
+              className="space-y-4"
+            >
+              <div className="space-y-2">
+                <h3 className="text-[13.5px] font-semibold">{t.deleteAccount.step2Heading}</h3>
+                <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                  {t.deleteAccount.step2Instruction(confirmKeyword)}
+                </p>
+                <div
+                  className="inline-block px-2.5 py-1 rounded border font-mono text-xs font-semibold tracking-wider select-all"
+                  style={{
+                    backgroundColor: 'var(--bg-elevated)',
+                    borderColor: 'var(--border-color)',
+                    color: 'var(--danger-text)',
+                  }}
+                >
+                  {confirmKeyword}
+                </div>
+              </div>
+
+              <div>
+                <input
+                  id="deleteAccountKeywordInput"
+                  type="text"
+                  autoFocus
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={typedKeyword}
+                  onChange={(e) => setTypedKeyword(e.target.value)}
+                  placeholder={t.deleteAccount.step2Placeholder(confirmKeyword)}
+                  aria-label={t.deleteAccount.step2Heading}
+                  className="w-full px-3 py-2 rounded-md border text-sm outline-none font-mono"
+                  style={{
+                    backgroundColor: 'var(--bg-input)',
+                    borderColor: canStep2 ? 'var(--danger-border)' : 'var(--border-color)',
+                  }}
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => goToStep(getPrevDeleteStep(2))}
+                  className="px-3.5 py-2 rounded-md border text-[13px] font-medium hover:bg-[var(--bg-hover)]"
+                  style={{
+                    backgroundColor: 'var(--bg-surface)',
+                    borderColor: 'var(--border-color)',
+                  }}
+                >
+                  {t.deleteAccount.backBtn}
+                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="px-3.5 py-2 rounded-md border text-[13px] font-medium hover:bg-[var(--bg-hover)]"
+                    style={{
+                      backgroundColor: 'var(--bg-surface)',
+                      borderColor: 'var(--border-color)',
+                    }}
+                  >
+                    {t.common.cancel}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!canStep2}
+                    className="px-4 py-2 rounded-md text-[13px] font-medium transition-opacity hover:opacity-90 disabled:opacity-45 disabled:cursor-not-allowed"
+                    style={{
+                      backgroundColor: 'var(--btn-primary-bg)',
+                      color: 'var(--btn-primary-text)',
+                    }}
+                  >
+                    {t.deleteAccount.nextBtn}
+                  </button>
+                </div>
+              </div>
+            </motion.form>
+          )}
+
+          {step === 3 && (
+            <motion.form
+              key="del-step-3"
+              custom={stepDirection}
+              variants={stepSlideVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={FAST_TRANSITION}
+              onSubmit={handleFinalSubmit}
+              className="space-y-4"
+            >
+              <div className="space-y-1.5">
+                <h3 className="text-[13.5px] font-semibold" style={{ color: 'var(--danger-text)' }}>
+                  {t.deleteAccount.step3Heading}
+                </h3>
+                <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                  {t.deleteAccount.step3Instruction}
+                </p>
+              </div>
+
+              <AnimatePresence initial={false}>
+                {errorMsg && (
+                  <motion.div
+                    key="del-error"
+                    variants={collapseVariants}
+                    initial="initial"
+                    animate="animate"
+                    exit="exit"
+                    transition={FAST_TRANSITION}
+                    className="overflow-hidden"
+                  >
+                    <div
+                      role="alert"
+                      className="p-2.5 rounded-md border text-xs leading-relaxed break-words"
+                      style={{
+                        backgroundColor: 'var(--danger-bg)',
+                        borderColor: 'var(--danger-border)',
+                        color: 'var(--danger-text)',
+                      }}
+                    >
+                      {errorMsg}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div>
+                <label
+                  htmlFor="deleteAccountPasswordInput"
+                  className="block text-xs font-medium mb-1.5"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  {t.deleteAccount.passwordLabel}
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    id="deleteAccountPasswordInput"
+                    type={showPassword ? 'text' : 'password'}
+                    autoFocus
+                    required
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (errorMsg) setErrorMsg('');
+                    }}
+                    placeholder={t.deleteAccount.passwordPlaceholder}
+                    className="w-full pl-3 pr-10 py-2 rounded-md border text-sm outline-none"
+                    style={{
+                      backgroundColor: 'var(--bg-input)',
+                      borderColor: 'var(--border-color)',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={
+                      showPassword ? t.deleteAccount.hidePassword : t.deleteAccount.showPassword
+                    }
+                    aria-pressed={showPassword}
+                    className="absolute right-1.5 w-7 h-7 rounded-md inline-flex items-center justify-center hover:bg-[var(--bg-hover)]"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={deleting}
+                  onClick={() => {
+                    setErrorMsg('');
+                    setPassword('');
+                    goToStep(getPrevDeleteStep(3));
+                  }}
+                  className="px-3.5 py-2 rounded-md border text-[13px] font-medium hover:bg-[var(--bg-hover)] disabled:opacity-50"
+                  style={{
+                    backgroundColor: 'var(--bg-surface)',
+                    borderColor: 'var(--border-color)',
+                  }}
+                >
+                  {t.deleteAccount.backBtn}
+                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={deleting}
+                    onClick={onClose}
+                    className="px-3.5 py-2 rounded-md border text-[13px] font-medium hover:bg-[var(--bg-hover)] disabled:opacity-50"
+                    style={{
+                      backgroundColor: 'var(--bg-surface)',
+                      borderColor: 'var(--border-color)',
+                    }}
+                  >
+                    {t.common.cancel}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!canStep3}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-[13px] font-medium text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-45 disabled:cursor-not-allowed"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{deleting ? t.deleteAccount.deletingBtn : t.deleteAccount.confirmDeleteBtn}</span>
+                  </button>
+                </div>
+              </div>
+            </motion.form>
+          )}
+        </AnimatePresence>
       </div>
     </ModalWrapper>
   );
@@ -978,29 +1620,40 @@ export const AddMeetingModal: React.FC<AddMeetingModalProps> = ({
 };
 
 /* ============================================================================
-   5. API SETTINGS MODAL
+   5. ANALYZER SETTINGS MODAL
    ============================================================================ */
 interface ApiSettingsModalProps {
   open: boolean;
-  currentKey: string;
+  mode: AnalyzerPreferenceMode;
+  sharedAiEnabled: boolean;
+  serverKeyConfigured: boolean;
   onClose: () => void;
-  onSaveKey: (val: string) => void;
-  onClearKey: () => void;
+  onSaveMode: (mode: AnalyzerPreferenceMode) => void;
 }
 
 export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
   open,
-  currentKey,
+  mode,
+  sharedAiEnabled,
+  serverKeyConfigured,
   onClose,
-  onSaveKey,
-  onClearKey,
+  onSaveMode,
 }) => {
   const { t } = useI18n();
-  const [val, setVal] = useState(currentKey);
+  const [selectedMode, setSelectedMode] = useState<AnalyzerPreferenceMode>(mode);
 
   useEffect(() => {
-    if (open) setVal(currentKey);
-  }, [open, currentKey]);
+    if (open) setSelectedMode(mode);
+  }, [open, mode]);
+
+  const statusText = !sharedAiEnabled
+    ? t.modals.analyzerStatusDisabled
+    : serverKeyConfigured
+    ? t.modals.analyzerStatusReady
+    : t.modals.analyzerStatusNoKey;
+
+  const statusColor =
+    sharedAiEnabled && serverKeyConfigured ? 'var(--success-text)' : 'var(--warning-text)';
 
   return (
     <ModalWrapper open={open} onClose={onClose} title={t.modals.apiTitle}>
@@ -1008,46 +1661,85 @@ export const ApiSettingsModal: React.FC<ApiSettingsModalProps> = ({
         {t.modals.apiDesc}
       </p>
 
-      <div className="mb-4">
-        <label
-          htmlFor="apiKeyInput"
-          className="block text-xs font-medium mb-1.5"
-          style={{ color: 'var(--text-secondary)' }}
-        >
-          {t.modals.apiKeyLabel}
-        </label>
-        <input
-          id="apiKeyInput"
-          type="password"
-          value={val}
-          onChange={(e) => setVal(e.target.value)}
-          placeholder="AIzaSy..."
-          className="w-full px-3 py-2 rounded-md border text-sm font-mono outline-none"
-          style={{
-            backgroundColor: 'var(--bg-input)',
-            borderColor: 'var(--border-color)',
-          }}
-        />
+      <div
+        className="mb-4 px-3 py-2.5 rounded-lg border flex items-center justify-between gap-3 text-xs"
+        style={{
+          backgroundColor: 'var(--bg-input)',
+          borderColor: 'var(--border-color)',
+        }}
+      >
+        <span style={{ color: 'var(--text-secondary)' }}>{t.modals.analyzerStatusLabel}</span>
+        <span className="font-medium text-right" style={{ color: statusColor }}>
+          {statusText}
+        </span>
+      </div>
+
+      <div className="mb-4 space-y-2">
+        <div className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+          {t.modals.analyzerModeLabel}
+        </div>
+        <div role="radiogroup" aria-label={t.modals.analyzerModeLabel} className="space-y-2">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={selectedMode === 'auto'}
+            onClick={() => setSelectedMode('auto')}
+            className="w-full text-left p-3 rounded-lg border transition-colors"
+            style={{
+              backgroundColor:
+                selectedMode === 'auto' ? 'var(--bg-elevated)' : 'var(--bg-input)',
+              borderColor:
+                selectedMode === 'auto' ? 'var(--border-hover)' : 'var(--border-color)',
+            }}
+          >
+            <div className="flex items-center gap-2 text-[13px] font-medium">
+              <Sparkles className="w-4 h-4 shrink-0" />
+              <span>{t.modals.analyzerModeAuto}</span>
+            </div>
+            <p className="text-[11.5px] mt-1 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+              {t.modals.analyzerModeAutoDesc}
+            </p>
+          </button>
+
+          <button
+            type="button"
+            role="radio"
+            aria-checked={selectedMode === 'local'}
+            onClick={() => setSelectedMode('local')}
+            className="w-full text-left p-3 rounded-lg border transition-colors"
+            style={{
+              backgroundColor:
+                selectedMode === 'local' ? 'var(--bg-elevated)' : 'var(--bg-input)',
+              borderColor:
+                selectedMode === 'local' ? 'var(--border-hover)' : 'var(--border-color)',
+            }}
+          >
+            <div className="flex items-center gap-2 text-[13px] font-medium">
+              <Cpu className="w-4 h-4 shrink-0" />
+              <span>{t.modals.analyzerModeLocal}</span>
+            </div>
+            <p className="text-[11.5px] mt-1 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+              {t.modals.analyzerModeLocalDesc}
+            </p>
+          </button>
+        </div>
       </div>
 
       <div className="flex justify-end gap-2">
         <button
           type="button"
-          onClick={() => {
-            setVal('');
-            onClearKey();
-          }}
+          onClick={onClose}
           className="px-3.5 py-2 rounded-md border text-[13px] font-medium hover:bg-[var(--bg-hover)]"
           style={{
             backgroundColor: 'var(--bg-surface)',
             borderColor: 'var(--border-color)',
           }}
         >
-          {t.common.clear}
+          {t.common.cancel}
         </button>
         <button
           type="button"
-          onClick={() => onSaveKey(val.trim())}
+          onClick={() => onSaveMode(selectedMode)}
           className="px-4 py-2 rounded-md text-[13px] font-medium hover:opacity-90"
           style={{
             backgroundColor: 'var(--btn-primary-bg)',
@@ -1176,35 +1868,64 @@ export const SummaryModal: React.FC<SummaryModalProps> = ({
         <button
           type="button"
           onClick={() => mode !== 'single' && onSwitchMode('single')}
-          className="px-3 py-1 rounded-md text-xs font-medium transition-colors"
+          className="relative px-3 py-1 rounded-md text-xs font-medium transition-colors"
           style={{
-            backgroundColor: mode === 'single' ? 'var(--bg-surface)' : 'transparent',
             color: mode === 'single' ? 'var(--text-primary)' : 'var(--text-secondary)',
           }}
         >
-          {activePersonName ? activePersonName : t.modals.selectedContactFallback}
+          {mode === 'single' && (
+            <motion.span
+              layoutId="summaryModeTab"
+              transition={TAB_SPRING_TRANSITION}
+              className="absolute inset-0 rounded-md"
+              style={{ backgroundColor: 'var(--bg-surface)' }}
+            />
+          )}
+          <span className="relative z-10">
+            {activePersonName ? activePersonName : t.modals.selectedContactFallback}
+          </span>
         </button>
         <button
           type="button"
           onClick={() => mode !== 'all' && onSwitchMode('all')}
-          className="px-3 py-1 rounded-md text-xs font-medium transition-colors"
+          className="relative px-3 py-1 rounded-md text-xs font-medium transition-colors"
           style={{
-            backgroundColor: mode === 'all' ? 'var(--bg-surface)' : 'transparent',
             color: mode === 'all' ? 'var(--text-primary)' : 'var(--text-secondary)',
           }}
         >
-          {t.modals.allContacts}
+          {mode === 'all' && (
+            <motion.span
+              layoutId="summaryModeTab"
+              transition={TAB_SPRING_TRANSITION}
+              className="absolute inset-0 rounded-md"
+              style={{ backgroundColor: 'var(--bg-surface)' }}
+            />
+          )}
+          <span className="relative z-10">{t.modals.allContacts}</span>
         </button>
       </div>
 
       <div className="px-6 py-5 overflow-y-auto flex-1">
         {isLoading ? (
-          <div className="py-12 text-center flex flex-col items-center gap-3">
+          <motion.div
+            key="summary-loading"
+            variants={windowEnterVariants}
+            initial="initial"
+            animate="animate"
+            transition={FAST_TRANSITION}
+            className="py-12 text-center flex flex-col items-center gap-3"
+          >
             <div className="w-6 h-6 rounded-full border-2 border-zinc-500/30 border-t-zinc-400 animate-spin" />
             <div className="text-sm font-medium">{t.modals.buildingSummary}</div>
-          </div>
+          </motion.div>
         ) : data ? (
-          <div>
+          <motion.div
+            key={`summary-${mode}-${data.reportTitle}`}
+            variants={windowEnterVariants}
+            initial="initial"
+            animate="animate"
+            transition={FAST_TRANSITION}
+          >
             <h3 className="font-display text-base font-semibold mb-4">{data.reportTitle}</h3>
             <div className="divide-y" style={{ borderColor: 'var(--border-color)' }}>
               {blocks.map((b) => (
@@ -1225,7 +1946,7 @@ export const SummaryModal: React.FC<SummaryModalProps> = ({
                 </div>
               ))}
             </div>
-          </div>
+          </motion.div>
         ) : null}
       </div>
 
