@@ -17,6 +17,8 @@ import {
   Cpu,
   Eye,
   EyeOff,
+  MessageSquarePlus,
+  Send,
 } from 'lucide-react';
 import type { AnalyzerPreferenceMode } from '../utils/aiPolicy';
 import type { DossierData, MeetingType } from '../types/notebook';
@@ -47,6 +49,7 @@ import {
   type DeleteAccountStep,
 } from '../utils/accountDelete';
 import { AnimatePresence, motion } from 'motion/react';
+import { useScrollLock } from '../utils/scrollLock';
 import {
   FAST_TRANSITION,
   TAB_SPRING_TRANSITION,
@@ -81,6 +84,8 @@ const ModalWrapper: React.FC<ModalBackdropProps> = ({
 }) => {
   const { t } = useI18n();
 
+  useScrollLock(open);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -105,7 +110,7 @@ const ModalWrapper: React.FC<ModalBackdropProps> = ({
           onClick={(e) => {
             if (e.target === e.currentTarget) onClose();
           }}
-          className="fixed inset-0 z-50 bg-black/65 backdrop-blur-[2px] flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/65 backdrop-blur-[2px] flex items-center justify-center p-4 overscroll-contain"
         >
           <motion.div
             key="modal-panel"
@@ -117,7 +122,7 @@ const ModalWrapper: React.FC<ModalBackdropProps> = ({
             className={`w-full rounded-xl border shadow-2xl ${
               large
                 ? 'max-w-[740px] max-h-[88vh] flex flex-col overflow-hidden p-0'
-                : 'max-w-[440px] p-5 sm:p-6 max-h-[90vh] overflow-y-auto'
+                : 'max-w-[440px] p-5 sm:p-6 max-h-[90vh] overflow-y-auto overscroll-contain thin-scrollbar'
             }`}
             style={{
               backgroundColor: 'var(--bg-surface)',
@@ -176,10 +181,8 @@ interface AccountModalProps {
   onLogout: () => void;
   onRequestDeleteAccount?: () => void;
   isAdmin?: boolean;
-  sharedAiEnabled?: boolean;
-  serverKeyConfigured?: boolean;
-  isTogglingSharedAi?: boolean;
-  onToggleSharedAi?: (enabled: boolean) => void;
+  onOpenAdminPanel?: () => void;
+  onSubmitFeedback?: (type: 'bug' | 'idea', text: string) => Promise<void>;
   onToast: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void;
 }
 
@@ -195,10 +198,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   onLogout,
   onRequestDeleteAccount,
   isAdmin = false,
-  sharedAiEnabled = true,
-  serverKeyConfigured = false,
-  isTogglingSharedAi = false,
-  onToggleSharedAi,
+  onOpenAdminPanel,
+  onSubmitFeedback,
   onToast,
 }) => {
   const { lang, setLang, t } = useI18n();
@@ -210,6 +211,10 @@ export const AccountModal: React.FC<AccountModalProps> = ({
     null
   );
   const [showChangeEmail, setShowChangeEmail] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackType, setFeedbackType] = useState<'bug' | 'idea'>('bug');
+  const [feedbackText, setFeedbackText] = useState('');
+  const [sendingFeedback, setSendingFeedback] = useState(false);
 
   const runRefreshStatus = async (manual = false) => {
     if (!user || !onRefreshAccount || checkingStatus) return;
@@ -243,6 +248,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       setNewEmail('');
       setCurrentPassword('');
       setShowChangeEmail(false);
+      setFeedbackOpen(false);
+      setFeedbackText('');
       if (user && onRefreshAccount) {
         void runRefreshStatus(false);
       }
@@ -511,8 +518,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                   exit="exit"
                   transition={FAST_TRANSITION}
                   onSubmit={handleBindEmail}
-                  className="space-y-2.5 pt-1 overflow-hidden"
+                  className="-mx-1 px-1 overflow-hidden"
                 >
+                <div className="pt-1 pb-0.5 space-y-2.5">
                 <div>
                   <label
                     htmlFor="bindEmailInput"
@@ -568,6 +576,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                 >
                   {binding ? t.account.sending : t.account.bindEmailBtn}
                 </button>
+                </div>
               </motion.form>
               )}
             </AnimatePresence>
@@ -581,76 +590,143 @@ export const AccountModal: React.FC<AccountModalProps> = ({
         </div>
       )}
 
-      {user && isAdmin && onToggleSharedAi && (
+      {user && isAdmin && onOpenAdminPanel && (
         <div
-          className="mt-4 p-3.5 rounded-lg border space-y-2.5"
+          className="mt-4 p-3.5 rounded-lg border flex items-center justify-between gap-3"
           style={{
             backgroundColor: 'var(--bg-elevated)',
-            borderColor: sharedAiEnabled ? 'var(--success-border)' : 'var(--border-color)',
+            borderColor: 'var(--border-color)',
           }}
         >
-          <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
             <div className="flex items-center gap-1.5 text-xs font-semibold">
-              <ShieldCheck
-                className="w-4 h-4 shrink-0"
-                style={{ color: sharedAiEnabled ? 'var(--success-text)' : 'var(--text-secondary)' }}
-              />
+              <ShieldCheck className="w-4 h-4 shrink-0" style={{ color: 'var(--accent)' }} />
               <span>{t.account.adminTitle}</span>
             </div>
-            <span
-              className="px-2 py-0.5 rounded text-[11px] font-medium border"
-              style={{
-                backgroundColor: 'var(--bg-surface)',
-                borderColor: 'var(--border-color)',
-                color: 'var(--text-secondary)',
-              }}
-            >
-              {t.account.adminBadge}
+            <p className="text-[11.5px] mt-0.5 leading-snug" style={{ color: 'var(--text-secondary)' }}>
+              {t.account.openAdminPanelDesc}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenAdminPanel}
+            className="px-3 py-1.5 rounded-md text-xs font-semibold shrink-0 transition-opacity hover:opacity-90"
+            style={{
+              backgroundColor: 'var(--accent)',
+              color: 'var(--accent-text)',
+            }}
+          >
+            {t.account.openAdminPanelBtn}
+          </button>
+        </div>
+      )}
+
+      {onSubmitFeedback && (
+        <div
+          className="mt-4 rounded-lg border p-3"
+          style={{
+            backgroundColor: 'var(--bg-elevated)',
+            borderColor: 'var(--border-color)',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setFeedbackOpen((v) => !v)}
+            aria-expanded={feedbackOpen}
+            className="w-full flex items-center justify-between gap-2 text-left text-[13px] font-medium"
+          >
+            <span className="inline-flex items-center gap-2">
+              <MessageSquarePlus className="w-4 h-4 shrink-0" style={{ color: 'var(--text-secondary)' }} />
+              <span>{t.account.feedbackBtn}</span>
             </span>
-          </div>
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              {feedbackOpen ? t.common.hide : '▾'}
+            </span>
+          </button>
 
-          <div className="flex items-center justify-between gap-3 pt-0.5">
-            <div className="min-w-0">
-              <div className="text-[13px] font-medium">{t.account.adminSharedAiLabel}</div>
-              <div className="text-[11.5px] mt-0.5" style={{ color: serverKeyConfigured ? 'var(--success-text)' : 'var(--warning-text)' }}>
-                {serverKeyConfigured ? t.account.adminServerKeyReady : t.account.adminServerKeyMissing}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              role="switch"
-              aria-checked={sharedAiEnabled}
-              aria-label={t.account.adminSharedAiLabel}
-              disabled={isTogglingSharedAi}
-              onClick={() => onToggleSharedAi(!sharedAiEnabled)}
-              className="inline-flex items-center gap-2 shrink-0 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-colors disabled:opacity-60"
-              style={{
-                backgroundColor: sharedAiEnabled ? 'var(--success-bg)' : 'var(--bg-surface)',
-                borderColor: sharedAiEnabled ? 'var(--success-border)' : 'var(--border-color)',
-                color: sharedAiEnabled ? 'var(--success-text)' : 'var(--text-secondary)',
-              }}
-            >
-              <span
-                aria-hidden="true"
-                className="relative inline-flex h-4 w-7 items-center rounded-full transition-colors"
-                style={{
-                  backgroundColor: sharedAiEnabled ? 'var(--success-text)' : 'var(--text-muted)',
+          <AnimatePresence initial={false}>
+            {feedbackOpen && (
+              <motion.form
+                key="feedback-form"
+                variants={collapseVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={FAST_TRANSITION}
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const clean = feedbackText.trim();
+                  if (!clean || sendingFeedback) return;
+                  setSendingFeedback(true);
+                  try {
+                    await onSubmitFeedback(feedbackType, clean);
+                    setFeedbackText('');
+                    setFeedbackOpen(false);
+                  } finally {
+                    setSendingFeedback(false);
+                  }
                 }}
+                className="overflow-hidden"
               >
-                <span
-                  className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
-                    sharedAiEnabled ? 'translate-x-3.5' : 'translate-x-0.5'
-                  }`}
-                />
-              </span>
-              <span>{sharedAiEnabled ? t.account.adminSharedAiOn : t.account.adminSharedAiOff}</span>
-            </button>
-          </div>
-
-          <p className="text-[11.5px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-            {t.account.adminSharedAiDesc}
-          </p>
+                <div className="pt-3 space-y-2.5">
+                  <div className="text-[11.5px]" style={{ color: 'var(--text-secondary)' }}>
+                    {t.account.feedbackTitle}
+                  </div>
+                  <div
+                    className="grid grid-cols-2 gap-1 p-1 rounded-md border"
+                    style={{
+                      backgroundColor: 'var(--bg-input)',
+                      borderColor: 'var(--border-color)',
+                    }}
+                  >
+                    {(['bug', 'idea'] as const).map((tp) => {
+                      const active = feedbackType === tp;
+                      return (
+                        <button
+                          key={tp}
+                          type="button"
+                          onClick={() => setFeedbackType(tp)}
+                          aria-pressed={active}
+                          className="py-1 px-2 rounded text-xs font-medium transition-colors"
+                          style={{
+                            backgroundColor: active ? 'var(--bg-elevated)' : 'transparent',
+                            color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                          }}
+                        >
+                          {tp === 'bug' ? t.account.feedbackTypeBug : t.account.feedbackTypeIdea}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <textarea
+                    required
+                    rows={3}
+                    maxLength={1200}
+                    value={feedbackText}
+                    onChange={(e) => setFeedbackText(e.target.value)}
+                    placeholder={t.account.feedbackPlaceholder}
+                    className="w-full px-3 py-2 rounded-md border text-[13px] outline-none resize-y"
+                    style={{
+                      backgroundColor: 'var(--bg-input)',
+                      borderColor: 'var(--border-color)',
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={sendingFeedback || !feedbackText.trim()}
+                    className="w-full py-2 px-3 rounded-md text-[13px] font-medium inline-flex items-center justify-center gap-1.5 transition-opacity hover:opacity-90 disabled:opacity-50"
+                    style={{
+                      backgroundColor: 'var(--btn-primary-bg)',
+                      color: 'var(--btn-primary-text)',
+                    }}
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>{sendingFeedback ? t.account.feedbackSendingBtn : t.account.feedbackSendBtn}</span>
+                  </button>
+                </div>
+              </motion.form>
+            )}
+          </AnimatePresence>
         </div>
       )}
 
@@ -907,8 +983,8 @@ export const DeleteAccountModal: React.FC<DeleteAccountModalProps> = ({
         </span>
       </div>
 
-      <div className="relative overflow-hidden">
-        <AnimatePresence mode="popLayout" initial={false} custom={stepDirection}>
+      <div className="relative -mx-1 px-1 py-0.5 overflow-hidden">
+        <AnimatePresence mode="wait" initial={false} custom={stepDirection}>
           {step === 1 && (
             <motion.div
               key="del-step-1"
@@ -1905,7 +1981,7 @@ export const SummaryModal: React.FC<SummaryModalProps> = ({
         </button>
       </div>
 
-      <div className="px-6 py-5 overflow-y-auto flex-1">
+      <div className="px-6 py-5 overflow-y-auto overscroll-contain thin-scrollbar flex-1">
         {isLoading ? (
           <motion.div
             key="summary-loading"

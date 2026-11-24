@@ -263,6 +263,164 @@ export interface Translations {
     adminToggleSavedOff: string;
     adminToggleServerOnlyNote: string;
     adminToggleError: string;
+    adminKeyRoutingTitle: string;
+    adminKeyRoutingDesc: string;
+    adminKeyRouteAuto: string;
+    adminKeyRoutePrimary: string;
+    adminKeyRouteBackup: string;
+    adminKeyPrimarySlot: string;
+    adminKeyBackupSlot: string;
+    adminKeyPrimaryEnvHint: string;
+    adminKeyBackupEnvHint: string;
+    adminKeyCheckBtn: string;
+    adminKeyCheckingBtn: string;
+    adminKeyHealthOk: string;
+    adminKeyHealthUntested: string;
+    adminKeyHealthUnconfigured: string;
+    adminKeyHealthCooldown: (seconds: number) => string;
+    adminKeyHealthInvalid: string;
+    adminKeyHealthError: string;
+    adminKeyActiveTag: string;
+    adminKeyStandbyTag: string;
+    adminKeyLastFallbackNote: (fromLabel: string, toLabel: string, reason: string) => string;
+    adminKeyRouteSaved: string;
+    adminKeyRouteError: string;
+    adminKeysCheckedOk: string;
+    adminKeysCheckedMissing: string;
+    adminKeysCheckError: string;
+    openAdminPanelBtn: string;
+    openAdminPanelDesc: string;
+    feedbackBtn: string;
+    feedbackTitle: string;
+    feedbackTypeBug: string;
+    feedbackTypeIdea: string;
+    feedbackPlaceholder: string;
+    feedbackSendBtn: string;
+    feedbackSendingBtn: string;
+    feedbackSentToast: string;
+    feedbackErrorToast: string;
+  };
+  readOnly: {
+    bannerTitle: string;
+    blockedActionToast: string;
+  };
+  pollWidget: {
+    badge: string;
+    votedBadge: string;
+    votesCount: (count: number) => string;
+    dismissAria: string;
+  };
+  adminPanel: {
+    title: string;
+    tabs: {
+      overview: string;
+      limits: string;
+      access: string;
+      journal: string;
+    };
+    refreshBtn: string;
+    loadingText: string;
+    envTitle: string;
+    uptimeLabel: string;
+    modelLabel: string;
+    rtdbLabel: string;
+    rtdbOnline: (ms: number) => string;
+    rtdbOffline: string;
+    pwaLabel: string;
+    kpiRequests: string;
+    kpiAvgLatency: string;
+    kpiTokens: string;
+    kpiCacheHits: string;
+    kpiDossierRebuilds: string;
+    kpiTokensSaved: string;
+    endpointsTitle: string;
+    featuresTitle: string;
+    featureLabels: {
+      ai_analyze: string;
+      dossier_single: string;
+      dossier_all: string;
+      chat_clean: string;
+      calendar_ics: string;
+      local_analyze: string;
+    };
+    digestTitle: string;
+    digestActiveUsers: string;
+    digestAiCalls: string;
+    digestErrors: string;
+    digestOpenTickets: string;
+    guestAiLabel: string;
+    guestAiDesc: string;
+    readOnlyLabel: string;
+    readOnlyDesc: string;
+    modelSwitcherTitle: string;
+    modelSwitcherDesc: string;
+    modelSavedToast: string;
+    modelPresets: {
+      fast: { label: string; desc: string };
+      balanced: { label: string; desc: string };
+      accurate: { label: string; desc: string };
+    };
+    pingGeminiBtn: string;
+    pingingGeminiBtn: string;
+    pingQuotaExhausted: string;
+    bannerTitle: string;
+    bannerEnableLabel: string;
+    bannerToneInfo: string;
+    bannerToneWarning: string;
+    bannerToneDanger: string;
+    bannerPlaceholder: string;
+    bannerPresetMaintenance: string;
+    bannerPresetAiOff: string;
+    bannerSaveBtn: string;
+    bannerSavedToast: string;
+    pollEditorTitle: string;
+    pollEnableLabel: string;
+    pollQuestionPlaceholder: string;
+    pollOptionsLabel: string;
+    pollResetVotes: string;
+    pollSaveBtn: string;
+    pollSavedToast: string;
+    templateTitle: string;
+    templateNameLabel: string;
+    templateSubtitleLabel: string;
+    templateGroupLabel: string;
+    templateNoteLabel: string;
+    templateFactsLabel: string;
+    templateResetBtn: string;
+    templateSaveBtn: string;
+    templateSavedToast: string;
+    webhookTitle: string;
+    webhookUrlPlaceholder: string;
+    webhookConfiguredMask: (target: string, provider: string) => string;
+    webhookSaveBtn: string;
+    webhookClearBtn: string;
+    webhookTestBtn: string;
+    webhookSendDigestBtn: string;
+    webhookSavedToast: string;
+    webhookTestOkToast: string;
+    webhookErrorToast: string;
+    triggers: {
+      onInvalidKey: string;
+      onQuotaExceeded: string;
+      onTrafficSpike: string;
+      onNewUser: string;
+      onNewTicket: string;
+      dailyDigestEnabled: string;
+    };
+    inboxTitle: string;
+    inboxEmpty: string;
+    ticketBug: string;
+    ticketIdea: string;
+    ticketStatusOpen: string;
+    ticketStatusResolved: string;
+    ticketResolveBtn: string;
+    ticketReopenBtn: string;
+    ticketPublishBannerBtn: string;
+    ticketReplyPlaceholder: string;
+    requestsLogTitle: string;
+    requestsLogEmpty: string;
+    eventsLogTitle: string;
+    eventsLogEmpty: string;
   };
   deleteAccount: {
     modalTitle: string;
@@ -668,6 +826,175 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       adminToggleServerOnlyNote:
         'Переключено на сервере. Чтобы состояние сохранялось при перезапуске, проверьте правила appConfig в Firebase.',
       adminToggleError: 'Не удалось переключить общий ИИ',
+      adminKeyRoutingTitle: 'Серверные ключи и fallback',
+      adminKeyRoutingDesc:
+        'В режиме «Авто» при сбое, нехватке квоты или ошибке основного ключа сервер мгновенно переключается на запасной без падения запроса.',
+      adminKeyRouteAuto: 'Авто + резерв',
+      adminKeyRoutePrimary: 'Основной',
+      adminKeyRouteBackup: 'Резервный',
+      adminKeyPrimarySlot: 'Основной слот',
+      adminKeyBackupSlot: 'Запасной слот',
+      adminKeyPrimaryEnvHint: 'GEMINI_API_KEY',
+      adminKeyBackupEnvHint: 'GEMINI_API_KEY_BACKUP',
+      adminKeyCheckBtn: 'Проверить ключи',
+      adminKeyCheckingBtn: 'Проверка...',
+      adminKeyHealthOk: 'Работает',
+      adminKeyHealthUntested: 'Задан',
+      adminKeyHealthUnconfigured: 'Не задан',
+      adminKeyHealthCooldown: (seconds) => `Пауза ${seconds}с`,
+      adminKeyHealthInvalid: 'Неверный',
+      adminKeyHealthError: 'Ошибка',
+      adminKeyActiveTag: 'Активен',
+      adminKeyStandbyTag: 'В резерве',
+      adminKeyLastFallbackNote: (fromLabel, toLabel, reason) =>
+        `Автопереход: ${fromLabel} → ${toLabel} (${reason})`,
+      adminKeyRouteSaved: 'Режим маршрутизации ключей обновлён',
+      adminKeyRouteError: 'Не удалось сменить режим ключей',
+      adminKeysCheckedOk: 'Проверка серверных ключей завершена',
+      adminKeysCheckedMissing: 'Ни один серверный ключ не настроен или не прошёл проверку',
+      adminKeysCheckError: 'Не удалось выполнить проверку ключей',
+      openAdminPanelBtn: 'Открыть админку',
+      openAdminPanelDesc: 'Обзор, лимиты, баннеры, стартовый шаблон, вебхуки и входящие тикеты',
+      feedbackBtn: 'Сообщить о проблеме / Предложить идею',
+      feedbackTitle: 'Обратная связь',
+      feedbackTypeBug: 'Проблема',
+      feedbackTypeIdea: 'Идея',
+      feedbackPlaceholder: 'Опишите ошибку или предложение по улучшению...',
+      feedbackSendBtn: 'Отправить',
+      feedbackSendingBtn: 'Отправка...',
+      feedbackSentToast: 'Обращение отправлено администратору',
+      feedbackErrorToast: 'Не удалось отправить обращение',
+    },
+    readOnly: {
+      bannerTitle: 'Режим «Только чтение»: редактирование и запись в облако временно отключены на время обслуживания.',
+      blockedActionToast: 'Включён режим «Только чтение» — изменения временно заблокированы',
+    },
+    pollWidget: {
+      badge: 'Мини-опрос',
+      votedBadge: 'Голос учтён',
+      votesCount: (count) => `Голосов: ${count}`,
+      dismissAria: 'Скрыть опрос',
+    },
+    adminPanel: {
+      title: 'Админ-панель',
+      tabs: {
+        overview: 'Обзор',
+        limits: 'Лимиты и флаги',
+        access: 'Доступ',
+        journal: 'Журнал',
+      },
+      refreshBtn: 'Обновить',
+      loadingText: 'Загрузка телеметрии...',
+      envTitle: 'Статус окружения',
+      uptimeLabel: 'Аптайм сервера',
+      modelLabel: 'Модель Gemini',
+      rtdbLabel: 'Firebase RTDB',
+      rtdbOnline: (ms) => `Подключено · ${ms} мс`,
+      rtdbOffline: 'Нет связи',
+      pwaLabel: 'PWA / Кэш',
+      kpiRequests: 'Запросы AI',
+      kpiAvgLatency: 'Ср. задержка',
+      kpiTokens: 'Всего токенов',
+      kpiCacheHits: 'Попаданий в кэш',
+      kpiDossierRebuilds: 'Запросов досье',
+      kpiTokensSaved: 'Сэкономлено ток.',
+      endpointsTitle: 'Скорость и токены по эндпоинтам',
+      featuresTitle: 'Популярность функций',
+      featureLabels: {
+        ai_analyze: 'AI-анализ заметок',
+        dossier_single: 'Досье (1 контакт)',
+        dossier_all: 'Общее досье',
+        chat_clean: 'Чистка переписок',
+        calendar_ics: 'Экспорт в .ics',
+        local_analyze: 'Локальный режим',
+      },
+      digestTitle: 'Ежедневная мини-сводка',
+      digestActiveUsers: 'Активных сегодня',
+      digestAiCalls: 'Запросов Gemini',
+      digestErrors: 'Ошибок AI',
+      digestOpenTickets: 'Открытых тикетов',
+      guestAiLabel: 'Облачный ИИ для гостей',
+      guestAiDesc: 'Запретите, чтобы неавторизованные гости не расходовали общий серверный ключ Gemini.',
+      readOnlyLabel: 'Режим «Только чтение» (Read-Only)',
+      readOnlyDesc: 'Блокирует редактирование контактов и запись в облако на время миграции или техработ.',
+      modelSwitcherTitle: 'Модель Gemini',
+      modelSwitcherDesc: 'Переключайте скорость и глубину анализа на лету — без правки кода и повторного деплоя.',
+      modelSavedToast: 'Модель Gemini обновлена',
+      modelPresets: {
+        fast: {
+          label: 'Быстрая',
+          desc: 'Минимальная задержка и экономия квоты',
+        },
+        balanced: {
+          label: 'Стандарт',
+          desc: 'Оптимальный баланс скорости и точности',
+        },
+        accurate: {
+          label: 'Точная',
+          desc: 'Глубокий анализ сложных заметок и досье',
+        },
+      },
+      pingGeminiBtn: 'Проверить Gemini',
+      pingingGeminiBtn: 'Проверка...',
+      pingQuotaExhausted: 'Квота исчерпана',
+      bannerTitle: 'Глобальное объявление (баннер)',
+      bannerEnableLabel: 'Показывать всем',
+      bannerToneInfo: 'Инфо',
+      bannerToneWarning: 'Внимание',
+      bannerToneDanger: 'Критично',
+      bannerPlaceholder: 'Например: Технические работы с 22:00...',
+      bannerPresetMaintenance: 'Технические работы',
+      bannerPresetAiOff: 'Облачный AI временно отключён',
+      bannerSaveBtn: 'Применить баннер',
+      bannerSavedToast: 'Глобальное объявление обновлено',
+      pollEditorTitle: 'Мини-опрос пользователей',
+      pollEnableLabel: 'Активен',
+      pollQuestionPlaceholder: 'Вопрос для голосования (например: Какую фичу добавить?)',
+      pollOptionsLabel: 'Варианты (по одному в строке, 2–5 шт.)',
+      pollResetVotes: 'Сбросить голоса',
+      pollSaveBtn: 'Сохранить опрос',
+      pollSavedToast: 'Опрос обновлён',
+      templateTitle: 'Стартовый пример контакта',
+      templateNameLabel: 'Имя демо-контакта',
+      templateSubtitleLabel: 'Подзаголовок',
+      templateGroupLabel: 'Группа',
+      templateNoteLabel: 'Текст для кнопки «Вставить пример»',
+      templateFactsLabel: 'Факты (формат: Категория | Эмодзи | Текст факта)',
+      templateResetBtn: 'Сбросить',
+      templateSaveBtn: 'Сохранить шаблон',
+      templateSavedToast: 'Стартовый пример обновлён',
+      webhookTitle: 'Алерты в Telegram / Discord / Webhook',
+      webhookUrlPlaceholder: 'https://discord.com/api/webhooks/... или api.telegram.org/bot.../sendMessage?chat_id=...',
+      webhookConfiguredMask: (target, provider) => `Подключён (${provider}): ${target}`,
+      webhookSaveBtn: 'Сохранить вебхук',
+      webhookClearBtn: 'Отключить',
+      webhookTestBtn: 'Тест алерта',
+      webhookSendDigestBtn: 'Отправить сводку',
+      webhookSavedToast: 'Настройки алертов сохранены',
+      webhookTestOkToast: 'Сообщение успешно отправлено',
+      webhookErrorToast: 'Ошибка отправки или небезопасный HTTPS URL',
+      triggers: {
+        onInvalidKey: 'Неверный ключ Gemini',
+        onQuotaExceeded: 'Исчерпание квоты (429)',
+        onTrafficSpike: 'Всплеск запросов',
+        onNewUser: 'Новый пользователь',
+        onNewTicket: 'Новый тикет',
+        dailyDigestEnabled: 'Ежедневная мини-сводка',
+      },
+      inboxTitle: 'Входящие тикеты пользователей',
+      inboxEmpty: 'Обращений пока нет',
+      ticketBug: 'Проблема',
+      ticketIdea: 'Идея',
+      ticketStatusOpen: 'Открыт',
+      ticketStatusResolved: 'Решён',
+      ticketResolveBtn: 'Решено',
+      ticketReopenBtn: 'Открыть снова',
+      ticketPublishBannerBtn: 'Ответить в баннере',
+      ticketReplyPlaceholder: 'Краткий ответ (необязательно)...',
+      requestsLogTitle: 'Последние запросы к Gemini',
+      requestsLogEmpty: 'Запросов к Gemini ещё не было',
+      eventsLogTitle: 'Системный журнал',
+      eventsLogEmpty: 'Событий пока нет',
     },
     deleteAccount: {
       modalTitle: 'Удаление аккаунта',
@@ -1087,6 +1414,175 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       adminToggleServerOnlyNote:
         'Серверде ауыстырылды. Қайта жүктеуден кейін сақталуы үшін Firebase appConfig ережелерін тексеріңіз.',
       adminToggleError: 'Ортақ AI күйін өзгерту мүмкін болмады',
+      adminKeyRoutingTitle: 'Сервер кілттері және резерв (fallback)',
+      adminKeyRoutingDesc:
+        '«Авто» режимінде негізгі кілтте қате немесе лимит шегі болса, сервер сұрауды тоқтатпай қосалқы кілтке бірден ауысады.',
+      adminKeyRouteAuto: 'Авто + резерв',
+      adminKeyRoutePrimary: 'Негізгі',
+      adminKeyRouteBackup: 'Резервтік',
+      adminKeyPrimarySlot: 'Негізгі слот',
+      adminKeyBackupSlot: 'Резервтік слот',
+      adminKeyPrimaryEnvHint: 'GEMINI_API_KEY',
+      adminKeyBackupEnvHint: 'GEMINI_API_KEY_BACKUP',
+      adminKeyCheckBtn: 'Кілттерді тексеру',
+      adminKeyCheckingBtn: 'Тексерілуде...',
+      adminKeyHealthOk: 'Жұмыс істейді',
+      adminKeyHealthUntested: 'Орнатылған',
+      adminKeyHealthUnconfigured: 'Жоқ',
+      adminKeyHealthCooldown: (seconds) => `Кідіріс ${seconds}с`,
+      adminKeyHealthInvalid: 'Жарамсыз',
+      adminKeyHealthError: 'Қате',
+      adminKeyActiveTag: 'Белсенді',
+      adminKeyStandbyTag: 'Резервте',
+      adminKeyLastFallbackNote: (fromLabel, toLabel, reason) =>
+        `Автоауысу: ${fromLabel} → ${toLabel} (${reason})`,
+      adminKeyRouteSaved: 'Кілттерді бағыттау режимі жаңартылды',
+      adminKeyRouteError: 'Кілт режимін өзгерту сәтсіз аяқталды',
+      adminKeysCheckedOk: 'Сервер кілттерін тексеру аяқталды',
+      adminKeysCheckedMissing: 'Белсенді сервер кілттері табылмады немесе тексеруден өтпеді',
+      adminKeysCheckError: 'Сервер кілттерін тексеру мүмкін болмады',
+      openAdminPanelBtn: 'Әкімші панелін ашу',
+      openAdminPanelDesc: 'Шолу, шектеулер, баннер, үлгі контакт, вебхуктер және тикеттер',
+      feedbackBtn: 'Мәселе хабарлау / Идея ұсыну',
+      feedbackTitle: 'Кері байланыс',
+      feedbackTypeBug: 'Мәселе',
+      feedbackTypeIdea: 'Идея',
+      feedbackPlaceholder: 'Қатені немесе ұсынысыңызды қысқаша жазыңыз...',
+      feedbackSendBtn: 'Жіберу',
+      feedbackSendingBtn: 'Жіберілуде...',
+      feedbackSentToast: 'Хабарлама әкімшіге жіберілді',
+      feedbackErrorToast: 'Хабарламаны жіберу сәтсіз аяқталды',
+    },
+    readOnly: {
+      bannerTitle: '«Тек оқу» режимі: қызмет көрсету кезінде бұлтқа жазу және өңдеу уақытша шектелді.',
+      blockedActionToast: '«Тек оқу» режимі қосулы — өзгерістер уақытша бұғатталған',
+    },
+    pollWidget: {
+      badge: 'Шағын сауалнама',
+      votedBadge: 'Дауыс есептелді',
+      votesCount: (count) => `Дауыстар: ${count}`,
+      dismissAria: 'Сауалнаманы жасыру',
+    },
+    adminPanel: {
+      title: 'Әкімші панелі',
+      tabs: {
+        overview: 'Шолу',
+        limits: 'Шектеулер және жалаушалар',
+        access: 'Қолжетімділік',
+        journal: 'Журнал',
+      },
+      refreshBtn: 'Жаңарту',
+      loadingText: 'Телеметрия жүктелуде...',
+      envTitle: 'Орта күйі',
+      uptimeLabel: 'Сервер аптаймы',
+      modelLabel: 'Gemini моделі',
+      rtdbLabel: 'Firebase RTDB',
+      rtdbOnline: (ms) => `Қосылды · ${ms} мс`,
+      rtdbOffline: 'Байланыс жоқ',
+      pwaLabel: 'PWA / Кэш',
+      kpiRequests: 'AI сұраулары',
+      kpiAvgLatency: 'Орт. кідіріс',
+      kpiTokens: 'Барлық токен',
+      kpiCacheHits: 'Кэштен алынды',
+      kpiDossierRebuilds: 'Досье саны',
+      kpiTokensSaved: 'Үнемделген ток.',
+      endpointsTitle: 'Эндпоинттер бойынша токендер мен жылдамдық',
+      featuresTitle: 'Функциялар жиілігі',
+      featureLabels: {
+        ai_analyze: 'AI-талдау',
+        dossier_single: 'Досье (1 контакт)',
+        dossier_all: 'Жалпы досье',
+        chat_clean: 'Хат тазалау',
+        calendar_ics: 'Күнтізбе .ics',
+        local_analyze: 'Жергілікті режим',
+      },
+      digestTitle: 'Күнделікті шағын есеп',
+      digestActiveUsers: 'Бүгінгі белсенділер',
+      digestAiCalls: 'Gemini сұраулары',
+      digestErrors: 'AI қателері',
+      digestOpenTickets: 'Ашық тикеттер',
+      guestAiLabel: 'Қонақтар үшін бұлтты AI',
+      guestAiDesc: 'Тіркелмеген қонақтардың ортақ сервер кілтін жұмсауын шектеу.',
+      readOnlyLabel: '«Тек оқу» режимі (Read-Only)',
+      readOnlyDesc: 'Дерекқорды көшіру кезінде бұлтқа жазу мен өңдеуді уақытша тоқтатады.',
+      modelSwitcherTitle: 'Gemini моделі',
+      modelSwitcherDesc: 'Кодты өңдемей және қайта деплой жасамай жылдам немесе дәл модельді таңдаңыз.',
+      modelSavedToast: 'Gemini моделі жаңартылды',
+      modelPresets: {
+        fast: {
+          label: 'Жылдам',
+          desc: 'Ең аз кідіріс және квотаны үнемдеу',
+        },
+        balanced: {
+          label: 'Стандарт',
+          desc: 'Жылдамдық пен сапа теңгерімі',
+        },
+        accurate: {
+          label: 'Дәл',
+          desc: 'Күрделі жазбалар мен досьені терең талдау',
+        },
+      },
+      pingGeminiBtn: 'Gemini тексеру',
+      pingingGeminiBtn: 'Тексерілуде...',
+      pingQuotaExhausted: 'Квота бітті',
+      bannerTitle: 'Жалпы хабарландыру (баннер)',
+      bannerEnableLabel: 'Барлығына көрсету',
+      bannerToneInfo: 'Ақпарат',
+      bannerToneWarning: 'Ескерту',
+      bannerToneDanger: 'Маңызды',
+      bannerPlaceholder: 'Мысалы: Техникалық жұмыстар...',
+      bannerPresetMaintenance: 'Техникалық жұмыстар',
+      bannerPresetAiOff: 'Бұлтты AI уақытша өшірілді',
+      bannerSaveBtn: 'Баннерді сақтау',
+      bannerSavedToast: 'Жалпы хабарландыру жаңартылды',
+      pollEditorTitle: 'Пайдаланушылар сауалнамасы',
+      pollEnableLabel: 'Белсенді',
+      pollQuestionPlaceholder: 'Дауыс беру сұрағы...',
+      pollOptionsLabel: 'Нұсқалар (әр жолда біреуден, 2–5 дана)',
+      pollResetVotes: 'Дауыстарды нөлдеу',
+      pollSaveBtn: 'Сауалнаманы сақтау',
+      pollSavedToast: 'Сауалнама жаңартылды',
+      templateTitle: 'Бастапқы контакт үлгісі',
+      templateNameLabel: 'Демо контакт аты',
+      templateSubtitleLabel: 'Қосымша атауы',
+      templateGroupLabel: 'Топ',
+      templateNoteLabel: '«Үлгіні қою» мәтіні',
+      templateFactsLabel: 'Деректер (формат: Санат | Эмодзи | Мәтін)',
+      templateResetBtn: 'Қалпына келтіру',
+      templateSaveBtn: 'Үлгіні сақтау',
+      templateSavedToast: 'Бастапқы контакт үлгісі жаңартылды',
+      webhookTitle: 'Telegram / Discord / Webhook ескертулері',
+      webhookUrlPlaceholder: 'https://discord.com/api/webhooks/... немесе api.telegram.org/bot.../sendMessage?chat_id=...',
+      webhookConfiguredMask: (target, provider) => `Қосылған (${provider}): ${target}`,
+      webhookSaveBtn: 'Сақтау',
+      webhookClearBtn: 'Өшіру',
+      webhookTestBtn: 'Тест хабарлама',
+      webhookSendDigestBtn: 'Есепті жіберу',
+      webhookSavedToast: 'Ескерту баптаулары сақталды',
+      webhookTestOkToast: 'Сәтті жіберілді',
+      webhookErrorToast: 'Жіберу қатесі немесе қауіпсіз емес HTTPS URL',
+      triggers: {
+        onInvalidKey: 'Жарамсыз Gemini кілті',
+        onQuotaExceeded: 'Квота шегі (429)',
+        onTrafficSpike: 'Сұраулардың күрт өсуі',
+        onNewUser: 'Жаңа тіркелу',
+        onNewTicket: 'Жаңа тикет',
+        dailyDigestEnabled: 'Күнделікті есеп',
+      },
+      inboxTitle: 'Пайдаланушы тикеттері',
+      inboxEmpty: 'Әзірге өтініштер жоқ',
+      ticketBug: 'Мәселе',
+      ticketIdea: 'Идея',
+      ticketStatusOpen: 'Ашық',
+      ticketStatusResolved: 'Шешілді',
+      ticketResolveBtn: 'Шешілді',
+      ticketReopenBtn: 'Қайта ашу',
+      ticketPublishBannerBtn: 'Баннерде жауап беру',
+      ticketReplyPlaceholder: 'Қысқа жауап (міндетті емес)...',
+      requestsLogTitle: 'Соңғы Gemini сұраулары',
+      requestsLogEmpty: 'Әзірге сұраулар болған жоқ',
+      eventsLogTitle: 'Жүйе журналы',
+      eventsLogEmpty: 'Оқиғалар жоқ',
     },
     deleteAccount: {
       modalTitle: 'Аккаунтты жою',
@@ -1504,6 +2000,175 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       adminToggleServerOnlyNote:
         'Switched on server. To persist across restarts, verify appConfig rules in Firebase.',
       adminToggleError: 'Could not update shared AI setting',
+      adminKeyRoutingTitle: 'Server keys & automatic failover',
+      adminKeyRoutingDesc:
+        'In Auto mode, if the primary key hits a quota limit or upstream error, the server immediately fails over to the backup key without dropping the request.',
+      adminKeyRouteAuto: 'Auto + backup',
+      adminKeyRoutePrimary: 'Primary only',
+      adminKeyRouteBackup: 'Backup only',
+      adminKeyPrimarySlot: 'Primary slot',
+      adminKeyBackupSlot: 'Backup slot',
+      adminKeyPrimaryEnvHint: 'GEMINI_API_KEY',
+      adminKeyBackupEnvHint: 'GEMINI_API_KEY_BACKUP',
+      adminKeyCheckBtn: 'Check keys',
+      adminKeyCheckingBtn: 'Checking...',
+      adminKeyHealthOk: 'Healthy',
+      adminKeyHealthUntested: 'Configured',
+      adminKeyHealthUnconfigured: 'Not set',
+      adminKeyHealthCooldown: (seconds) => `Cooldown ${seconds}s`,
+      adminKeyHealthInvalid: 'Invalid',
+      adminKeyHealthError: 'Error',
+      adminKeyActiveTag: 'Active',
+      adminKeyStandbyTag: 'Standby',
+      adminKeyLastFallbackNote: (fromLabel, toLabel, reason) =>
+        `Auto-failover: ${fromLabel} → ${toLabel} (${reason})`,
+      adminKeyRouteSaved: 'Server key route updated',
+      adminKeyRouteError: 'Failed to switch server key route',
+      adminKeysCheckedOk: 'Server key health check completed',
+      adminKeysCheckedMissing: 'No healthy server keys responded',
+      adminKeysCheckError: 'Failed to check server keys',
+      openAdminPanelBtn: 'Open Admin Console',
+      openAdminPanelDesc: 'Telemetry, flags, banners, starter template, webhooks, and inbox',
+      feedbackBtn: 'Report an issue / Suggest an idea',
+      feedbackTitle: 'Feedback',
+      feedbackTypeBug: 'Issue',
+      feedbackTypeIdea: 'Idea',
+      feedbackPlaceholder: 'Describe a bug or feature suggestion...',
+      feedbackSendBtn: 'Submit',
+      feedbackSendingBtn: 'Sending...',
+      feedbackSentToast: 'Feedback sent to administrator',
+      feedbackErrorToast: 'Failed to submit feedback',
+    },
+    readOnly: {
+      bannerTitle: 'Read-Only mode: editing and cloud writes are temporarily paused for maintenance.',
+      blockedActionToast: 'Read-Only mode is active — edits are temporarily disabled',
+    },
+    pollWidget: {
+      badge: 'Quick poll',
+      votedBadge: 'Vote recorded',
+      votesCount: (count) => `${count} votes`,
+      dismissAria: 'Dismiss poll',
+    },
+    adminPanel: {
+      title: 'Admin Console',
+      tabs: {
+        overview: 'Overview',
+        limits: 'Limits & Flags',
+        access: 'Access',
+        journal: 'Log',
+      },
+      refreshBtn: 'Refresh',
+      loadingText: 'Loading telemetry...',
+      envTitle: 'Environment Status',
+      uptimeLabel: 'Server Uptime',
+      modelLabel: 'Gemini Model',
+      rtdbLabel: 'Firebase RTDB',
+      rtdbOnline: (ms) => `Connected · ${ms} ms`,
+      rtdbOffline: 'Disconnected',
+      pwaLabel: 'PWA / Cache',
+      kpiRequests: 'AI Requests',
+      kpiAvgLatency: 'Avg Latency',
+      kpiTokens: 'Total Tokens',
+      kpiCacheHits: 'Cache Hits',
+      kpiDossierRebuilds: 'Dossier Runs',
+      kpiTokensSaved: 'Tokens Saved',
+      endpointsTitle: 'Tokens & Avg Latency by Endpoint',
+      featuresTitle: 'Feature Popularity',
+      featureLabels: {
+        ai_analyze: 'AI note analysis',
+        dossier_single: 'Single dossier',
+        dossier_all: 'All-contacts dossier',
+        chat_clean: 'Chat cleanup',
+        calendar_ics: 'Calendar .ics export',
+        local_analyze: 'Local mode runs',
+      },
+      digestTitle: 'Daily Mini-Digest',
+      digestActiveUsers: 'Active today',
+      digestAiCalls: 'Gemini calls',
+      digestErrors: 'AI errors',
+      digestOpenTickets: 'Open tickets',
+      guestAiLabel: 'Cloud AI for Guests',
+      guestAiDesc: 'Disable to prevent anonymous guest sessions from consuming shared Gemini quota.',
+      readOnlyLabel: 'Read-Only Mode',
+      readOnlyDesc: 'Temporarily blocks edits and cloud writes during safe database maintenance.',
+      modelSwitcherTitle: 'Gemini Model',
+      modelSwitcherDesc: 'Switch between fast and deeper reasoning models on the fly without redeploying.',
+      modelSavedToast: 'Gemini model updated',
+      modelPresets: {
+        fast: {
+          label: 'Fast',
+          desc: 'Lowest latency & quota savings',
+        },
+        balanced: {
+          label: 'Balanced',
+          desc: 'Default speed and reasoning quality',
+        },
+        accurate: {
+          label: 'Accurate',
+          desc: 'Deep analysis for complex dossiers',
+        },
+      },
+      pingGeminiBtn: 'Ping Gemini',
+      pingingGeminiBtn: 'Checking...',
+      pingQuotaExhausted: 'Quota exhausted',
+      bannerTitle: 'Global Announcement Banner',
+      bannerEnableLabel: 'Visible to all users',
+      bannerToneInfo: 'Info',
+      bannerToneWarning: 'Warning',
+      bannerToneDanger: 'Critical',
+      bannerPlaceholder: 'e.g. Scheduled maintenance...',
+      bannerPresetMaintenance: 'Scheduled maintenance',
+      bannerPresetAiOff: 'Cloud AI temporarily disabled',
+      bannerSaveBtn: 'Apply banner',
+      bannerSavedToast: 'Global banner updated',
+      pollEditorTitle: 'Feature Vote / Mini-Poll',
+      pollEnableLabel: 'Active',
+      pollQuestionPlaceholder: 'Question for users...',
+      pollOptionsLabel: 'Options (one per line, 2–5 items)',
+      pollResetVotes: 'Reset votes',
+      pollSaveBtn: 'Save poll',
+      pollSavedToast: 'Poll updated',
+      templateTitle: 'Starter Contact Template',
+      templateNameLabel: 'Demo Contact Name',
+      templateSubtitleLabel: 'Subtitle',
+      templateGroupLabel: 'Group',
+      templateNoteLabel: 'Insert Sample Note Text',
+      templateFactsLabel: 'Facts (format: Section | Emoji | Fact text)',
+      templateResetBtn: 'Reset',
+      templateSaveBtn: 'Save template',
+      templateSavedToast: 'Starter contact template saved',
+      webhookTitle: 'Telegram / Discord / Webhook Alerts',
+      webhookUrlPlaceholder: 'https://discord.com/api/webhooks/... or api.telegram.org/bot.../sendMessage?chat_id=...',
+      webhookConfiguredMask: (target, provider) => `Connected (${provider}): ${target}`,
+      webhookSaveBtn: 'Save webhook',
+      webhookClearBtn: 'Clear',
+      webhookTestBtn: 'Test alert',
+      webhookSendDigestBtn: 'Send digest',
+      webhookSavedToast: 'Alert settings saved',
+      webhookTestOkToast: 'Alert delivered successfully',
+      webhookErrorToast: 'Delivery failed or invalid HTTPS URL',
+      triggers: {
+        onInvalidKey: 'Invalid Gemini key',
+        onQuotaExceeded: 'Quota exceeded (429)',
+        onTrafficSpike: 'Traffic spike',
+        onNewUser: 'New user signup',
+        onNewTicket: 'New feedback ticket',
+        dailyDigestEnabled: 'Daily mini-digest',
+      },
+      inboxTitle: 'User Feedback Inbox',
+      inboxEmpty: 'No tickets yet',
+      ticketBug: 'Issue',
+      ticketIdea: 'Idea',
+      ticketStatusOpen: 'Open',
+      ticketStatusResolved: 'Resolved',
+      ticketResolveBtn: 'Mark resolved',
+      ticketReopenBtn: 'Reopen',
+      ticketPublishBannerBtn: 'Reply in banner',
+      ticketReplyPlaceholder: 'Optional short reply...',
+      requestsLogTitle: 'Recent Gemini Requests',
+      requestsLogEmpty: 'No Gemini requests recorded yet',
+      eventsLogTitle: 'System Event Log',
+      eventsLogEmpty: 'No events recorded yet',
     },
     deleteAccount: {
       modalTitle: 'Delete account',

@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Check, Download, Share, Smartphone, WifiOff, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useI18n } from '../utils/LanguageContext';
 import { useOnlineStatus, usePWAInstall } from '../utils/usePWAInstall';
+import { useScrollLock } from '../utils/scrollLock';
 import {
   FAST_TRANSITION,
   WINDOW_TRANSITION,
@@ -21,6 +22,17 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
   const { t } = useI18n();
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
   const [showIOSGuide, setShowIOSGuide] = useState(false);
+
+  useScrollLock(showIOSGuide);
+
+  useEffect(() => {
+    if (!showIOSGuide) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowIOSGuide(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showIOSGuide]);
 
   if (isInstalled) {
     if (variant === 'modal') {
@@ -95,7 +107,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
             onClick={(e) => {
               if (e.target === e.currentTarget) setShowIOSGuide(false);
             }}
-            className="fixed inset-0 z-50 bg-black/65 backdrop-blur-[2px] flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 bg-black/65 backdrop-blur-[2px] flex items-center justify-center p-4 overscroll-contain"
           >
             <motion.div
               key="ios-guide-panel"

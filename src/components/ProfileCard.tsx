@@ -4,6 +4,7 @@ import type { Person } from '../types/notebook';
 import { DEFAULT_GROUPS, getAvatarGradient } from '../data/sampleData';
 import { formatDateTime, getInitials } from '../utils/storage';
 import { formatDaysForLang, getDaysSinceLastContact } from '../utils/dateReminders';
+import { useLiveMinute } from '../utils/liveClock';
 import { useI18n } from '../utils/LanguageContext';
 import { translateGroupLabel } from '../utils/i18n';
 
@@ -35,6 +36,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
   onDeletePerson,
 }) => {
   const { lang, t } = useI18n();
+  useLiveMinute();
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(person.name);
   const [editingSub, setEditingSub] = useState(false);

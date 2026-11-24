@@ -1,6 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { User } from '@firebase/auth';
-import { Menu, Plus, X, Sun, Moon } from 'lucide-react';
+import {
+  Menu,
+  Plus,
+  X,
+  Sun,
+  Moon,
+  Lock,
+  Megaphone,
+  CheckCircle2,
+} from 'lucide-react';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import type {
   AnalysisReport,
@@ -30,6 +39,14 @@ import {
   shouldUseCloudAi,
   type AnalyzerPreferenceMode,
 } from './utils/aiPolicy';
+import type { AiKeyRouteMode } from './utils/aiKeyRouter';
+import {
+  APP_VERSION,
+  type FeaturePoll,
+  type GlobalAnnouncement,
+  type SampleContactTemplate,
+} from './utils/adminOps';
+import { useLiveMinute } from './utils/liveClock';
 import {
   detectDeviceLanguage,
   detectDeviceTheme,
@@ -62,7 +79,7 @@ import {
   logoutFromFirebase,
   reloadFirebaseUser,
   savePersonToCloud,
-  setGlobalAiEnabledInCloud,
+  setCloudWriteBlockedByReadOnly,
   subscribeAuthChanges,
   subscribeGlobalAiConfig,
   subscribeUserPeople,
@@ -76,7 +93,10 @@ import {
   buildDossierWithGemini,
   fetchServerAiStatus,
   formatGeminiFallbackReason,
-  toggleAdminSharedAi,
+  notifyNewUserRegistration,
+  submitPollVote,
+  submitUserFeedback,
+  trackFeatureUsage,
 } from './services/gemini';
 import { AuthScreen } from './components/AuthScreen';
 import { Sidebar } from './components/Sidebar';
@@ -86,6 +106,7 @@ import { ColumnsGrid } from './components/ColumnsGrid';
 import { MeetingsTimeline } from './components/MeetingsTimeline';
 import { RawNotesHistory } from './components/RawNotesHistory';
 import { OfflineIndicator } from './components/PWAInstallButton';
+import { AdminModal } from './components/AdminModal';
 import {
   AccountModal,
   DeleteAccountModal,
@@ -96,9 +117,19 @@ import {
   ConfirmModal,
   SummaryModal,
 } from './components/Modals';
+import { isDocumentScrollLocked } from './utils/scrollLock';
+import {
+  createSwipeSession,
+  evaluateSwipeEnd,
+  evaluateSwipeMove,
+  isMobileViewportWidth,
+  shouldIgnoreSwipeTarget,
+  type DrawerSwipeSession,
+} from './utils/swipeDrawer';
 import {
   FAST_TRANSITION,
   WINDOW_TRANSITION,
+  fadeEnterVariants,
   toastVariants,
   windowEnterVariants,
 } from './utils/motionPresets';
@@ -171,8 +202,25 @@ export default function App() {
     getSavedAnalyzerMode()
   );
   const [sharedAiEnabled, setSharedAiEnabled] = useState<boolean>(true);
+  const [guestAiEnabled, setGuestAiEnabled] = useState<boolean>(true);
+  const [readOnlyMode, setReadOnlyMode] = useState<boolean>(false);
   const [serverKeyConfigured, setServerKeyConfigured] = useState<boolean>(false);
-  const [isTogglingSharedAi, setIsTogglingSharedAi] = useState<boolean>(false);
+  const [, setKeyRouteMode] = useState<AiKeyRouteMode>('auto');
+  const [announcement, setAnnouncement] = useState<GlobalAnnouncement | null>(null);
+  const [announcementDismissedText, setAnnouncementDismissedText] = useState<string>('');
+  const [sampleTemplate, setSampleTemplate] = useState<SampleContactTemplate | null>(null);
+  const [poll, setPoll] = useState<FeaturePoll | null>(null);
+  const [pollVotedMap, setPollVotedMap] = useState<Record<string, string>>(() => {
+    try {
+      const raw = safeStorage.getItem('spn_poll_votes_v1');
+      return raw ? (JSON.parse(raw) as Record<string, string>) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [pollDismissedId, setPollDismissedId] = useState<string>('');
+  const [votingPoll, setVotingPoll] = useState(false);
+
   const [activeEngine, setActiveEngine] = useState<'gemini' | 'local'>('local');
   const [cloudStatus, setCloudStatus] = useState<CloudSyncStatus>('local');
   const [pendingQueue, setPendingQueue] = useState<PendingSyncQueue>({
@@ -183,6 +231,7 @@ export default function App() {
 
   // Modals
   const [accountOpen, setAccountOpen] = useState(false);
+  const [adminModalOpen, setAdminModalOpen] = useState(false);
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
   const [addPersonOpen, setAddPersonOpen] = useState(false);
   const [addColumnOpen, setAddColumnOpen] = useState(false);
@@ -201,12 +250,18 @@ export default function App() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryData, setSummaryData] = useState<DossierData | null>(null);
 
+  const liveMinuteTick = useLiveMinute();
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const cloudUnsubRef = useRef<(() => void) | null>(null);
+  const workspaceSwipeRef = useRef<DrawerSwipeSession | null>(null);
   const peopleRef = useRef<Person[]>([]);
   peopleRef.current = people;
   const pendingRef = useRef<PendingSyncQueue>(pendingQueue);
   pendingRef.current = pendingQueue;
+  const sampleTemplateRef = useRef<SampleContactTemplate | null>(sampleTemplate);
+  sampleTemplateRef.current = sampleTemplate;
+  const readOnlyRef = useRef<boolean>(readOnlyMode);
+  readOnlyRef.current = readOnlyMode;
 
   const showToast = useCallback(
     (message: string, type: ToastItem['type'] = 'info') => {
@@ -248,7 +303,13 @@ export default function App() {
     fetchServerAiStatus().then((status) => {
       if (!active) return;
       setSharedAiEnabled(status.sharedAiEnabled);
+      setGuestAiEnabled(status.guestAiEnabled);
+      setReadOnlyMode(status.readOnlyMode);
       setServerKeyConfigured(status.serverKeyConfigured);
+      if (status.keyRouteMode) setKeyRouteMode(status.keyRouteMode);
+      if (status.announcement) setAnnouncement(status.announcement);
+      if (status.sampleTemplate) setSampleTemplate(status.sampleTemplate);
+      if (status.poll) setPoll(status.poll);
     });
 
     let unsubGlobalAi: (() => void) | null = null;
@@ -257,6 +318,12 @@ export default function App() {
         (cfg) => {
           if (!active) return;
           setSharedAiEnabled(cfg.sharedAiEnabled);
+          setGuestAiEnabled(cfg.guestAiEnabled);
+          setReadOnlyMode(cfg.readOnlyMode);
+          if (cfg.keyRouteMode) setKeyRouteMode(cfg.keyRouteMode);
+          if (cfg.announcement) setAnnouncement(cfg.announcement);
+          if (cfg.sampleTemplate) setSampleTemplate(cfg.sampleTemplate);
+          if (cfg.poll) setPoll(cfg.poll);
         },
         () => {
           // If appConfig isn't readable yet in RTDB rules, keep server status
@@ -273,12 +340,18 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    setCloudWriteBlockedByReadOnly(readOnlyMode);
+  }, [readOnlyMode]);
+
+  useEffect(() => {
     const syncEngineIndicator = () => {
       const decision = shouldUseCloudAi({
         preferenceMode: analyzerMode,
         isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
         sharedAiEnabled,
         serverKeyConfigured,
+        isGuest: !currentUser,
+        guestAiEnabled,
       });
       setActiveEngine(decision.useCloud ? 'gemini' : 'local');
     };
@@ -289,7 +362,7 @@ export default function App() {
       window.removeEventListener('online', syncEngineIndicator);
       window.removeEventListener('offline', syncEngineIndicator);
     };
-  }, [analyzerMode, sharedAiEnabled, serverKeyConfigured]);
+  }, [analyzerMode, sharedAiEnabled, serverKeyConfigured, currentUser, guestAiEnabled]);
 
   const handleToggleTheme = useCallback(() => {
     setTheme((prev) => {
@@ -344,7 +417,7 @@ export default function App() {
     }
 
     if (scopeId === 'guest') {
-      const sample = createDefaultSampleState();
+      const sample = createDefaultSampleState(sampleTemplateRef.current);
       setPeople(sample.people);
       setActivePersonId(sample.activePersonId);
     } else {
@@ -435,6 +508,10 @@ export default function App() {
   );
 
   const handleManualSync = useCallback(async () => {
+    if (readOnlyRef.current) {
+      showToast(tRef.current.readOnly.blockedActionToast, 'warning');
+      return;
+    }
     if (!currentUser || isSyncing) return;
     const uidStr = currentUser.uid;
     setIsSyncing(true);
@@ -482,36 +559,61 @@ export default function App() {
     return res;
   }, [currentUser]);
 
-  const handleToggleSharedAi = useCallback(
-    async (nextEnabled: boolean) => {
-      if (!currentUser || !isAdminUser(currentUser) || isTogglingSharedAi) return;
-      setIsTogglingSharedAi(true);
+  const handleSubmitFeedback = useCallback(
+    async (type: 'bug' | 'idea', text: string) => {
       try {
-        const token = await getFreshIdToken(currentUser);
-        if (!token) {
-          throw new Error('NO_TOKEN');
-        }
-        await toggleAdminSharedAi(token, nextEnabled);
-        setSharedAiEnabled(nextEnabled);
-
-        try {
-          await setGlobalAiEnabledInCloud(currentUser, nextEnabled);
-          showToast(
-            nextEnabled
-              ? tRef.current.account.adminToggleSavedOn
-              : tRef.current.account.adminToggleSavedOff,
-            'success'
-          );
-        } catch {
-          showToast(tRef.current.account.adminToggleServerOnlyNote, 'warning');
-        }
-      } catch {
-        showToast(tRef.current.account.adminToggleError, 'error');
-      } finally {
-        setIsTogglingSharedAi(false);
+        const token = currentUser ? await getFreshIdToken(currentUser) : null;
+        await submitUserFeedback(
+          {
+            type,
+            text,
+            lang,
+            authorLabel: currentUser ? getUserDisplayLabel(currentUser) : tRef.current.common.guest,
+            appVersion: APP_VERSION,
+          },
+          token
+        );
+        showToast(tRef.current.account.feedbackSentToast, 'success');
+      } catch (err) {
+        showToast(tRef.current.account.feedbackErrorToast, 'error');
+        throw err;
       }
     },
-    [currentUser, isTogglingSharedAi, showToast]
+    [currentUser, lang, showToast]
+  );
+
+  const handleVotePoll = useCallback(
+    async (optionId: string) => {
+      if (!poll || !poll.enabled || votingPoll) return;
+      if (pollVotedMap[poll.id]) return;
+      setVotingPoll(true);
+      try {
+        const voterKey = currentUser?.uid
+          ? `u_${currentUser.uid}`
+          : (() => {
+              let guestId = safeStorage.getItem('spn_guest_voter_id');
+              if (!guestId) {
+                guestId = uid('guest');
+                safeStorage.setItem('spn_guest_voter_id', guestId);
+              }
+              return guestId;
+            })();
+        const res = await submitPollVote({
+          pollId: poll.id,
+          optionId,
+          voterKey,
+        });
+        setPoll(res.poll);
+        const nextMap = { ...pollVotedMap, [poll.id]: optionId };
+        setPollVotedMap(nextMap);
+        safeStorage.setItem('spn_poll_votes_v1', JSON.stringify(nextMap));
+      } catch {
+        showToast(tRef.current.account.feedbackErrorToast, 'error');
+      } finally {
+        setVotingPoll(false);
+      }
+    },
+    [currentUser, poll, pollVotedMap, showToast, votingPoll]
   );
 
   const handleDeleteAccount = useCallback(
@@ -558,6 +660,31 @@ export default function App() {
           loadLocalScope(uidStr);
           setCloudStatus('connecting');
           updateUserProfileInCloud(user).catch(() => {});
+
+          try {
+            const cMs = user.metadata?.creationTime
+              ? Date.parse(user.metadata.creationTime)
+              : 0;
+            const sMs = user.metadata?.lastSignInTime
+              ? Date.parse(user.metadata.lastSignInTime)
+              : 0;
+            const notifiedKey = `spn_notified_new_user_${user.uid}`;
+            if (
+              cMs > 0 &&
+              sMs > 0 &&
+              Math.abs(sMs - cMs) < 120_000 &&
+              !safeStorage.getItem(notifiedKey)
+            ) {
+              safeStorage.setItem(notifiedKey, '1');
+              getFreshIdToken(user)
+                .then((tk) => {
+                  if (tk) notifyNewUserRegistration(tk);
+                })
+                .catch(() => {});
+            }
+          } catch {
+            // Non-blocking telemetry
+          }
 
           if (!user.emailVerified || isSyntheticLoginEmail(user.email)) {
             reloadFirebaseUser(user)
@@ -654,10 +781,18 @@ export default function App() {
     [people, activePersonId]
   );
 
-  const upcomingReminders = useMemo(() => getUpcomingReminders(people, 30), [people]);
+  const upcomingReminders = useMemo(
+    () => getUpcomingReminders(people, 30),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [people, liveMinuteTick]
+  );
 
   const updateSinglePerson = useCallback(
     (personId: string, updater: (p: Person) => Person) => {
+      if (readOnlyRef.current) {
+        showToast(tRef.current.readOnly.blockedActionToast, 'warning');
+        return;
+      }
       let updatedPerson: Person | null = null;
       setPeople((prev) => {
         const next = prev.map((p) => {
@@ -672,7 +807,7 @@ export default function App() {
         pushPersonUpdate(updatedPerson, currentUser.uid);
       }
     },
-    [activePersonId, currentScope, currentUser, persistLocalSnapshot, pushPersonUpdate]
+    [activePersonId, currentScope, currentUser, persistLocalSnapshot, pushPersonUpdate, showToast]
   );
 
   const handleSelectPerson = useCallback(
@@ -694,6 +829,10 @@ export default function App() {
     colorId: string,
     group: string
   ) => {
+    if (readOnlyRef.current) {
+      showToast(tRef.current.readOnly.blockedActionToast, 'warning');
+      return;
+    }
     const nowIso = new Date().toISOString();
     const newPerson: Person = {
       id: uid('person'),
@@ -730,6 +869,10 @@ export default function App() {
   };
 
   const handleDeletePerson = (person: Person) => {
+    if (readOnlyRef.current) {
+      showToast(tRef.current.readOnly.blockedActionToast, 'warning');
+      return;
+    }
     setConfirmState({
       open: true,
       title: t.toasts.deleteTabTitle(person.name),
@@ -823,6 +966,10 @@ export default function App() {
   };
 
   const handleAnalyzeText = async () => {
+    if (readOnlyRef.current) {
+      showToast(tRef.current.readOnly.blockedActionToast, 'warning');
+      return;
+    }
     if (!activePerson || isAnalyzing) return;
     const rawText = draftText.trim();
     if (!rawText) {
@@ -843,17 +990,23 @@ export default function App() {
         isOnline: navigator.onLine,
         sharedAiEnabled,
         serverKeyConfigured,
+        isGuest: !currentUser,
+        guestAiEnabled,
       });
       if (!policy.useCloud) {
         throw new Error(policy.reason || 'NO_API_KEY');
       }
-      result = await analyzeTextWithGemini(activePerson, rawText, people);
+      const idToken = currentUser ? await getFreshIdToken(currentUser) : null;
+      result = await analyzeTextWithGemini(activePerson, rawText, people, idToken);
       engineUsed = 'gemini';
+      trackFeatureUsage('ai_analyze');
     } catch (err) {
       engineUsed = 'local';
       const errCode = err instanceof Error ? err.message : '';
       if (errCode === 'AI_DISABLED_BY_ADMIN') {
         setSharedAiEnabled(false);
+      } else if (errCode === 'GUEST_AI_DISABLED') {
+        setGuestAiEnabled(false);
       }
       const reasonMsg = formatGeminiFallbackReason(err, lang);
       if (
@@ -866,6 +1019,7 @@ export default function App() {
         showToast(reasonMsg, 'warning');
       }
       result = analyzeTextLocally(activePerson, rawText, people, lang);
+      trackFeatureUsage('local_analyze');
     }
 
     setActiveEngine(engineUsed);
@@ -1050,6 +1204,10 @@ export default function App() {
   };
 
   const handleUndoAnalysis = () => {
+    if (readOnlyRef.current) {
+      showToast(tRef.current.readOnly.blockedActionToast, 'warning');
+      return;
+    }
     if (!lastReport?.snapshotBefore) return;
     const restored = lastReport.snapshotBefore;
     updateSinglePerson(restored.id, () => restored);
@@ -1072,11 +1230,14 @@ export default function App() {
         isOnline: navigator.onLine,
         sharedAiEnabled,
         serverKeyConfigured,
+        isGuest: !currentUser,
+        guestAiEnabled,
       });
       if (!policy.useCloud) {
         throw new Error(policy.reason || 'NO_API_KEY');
       }
-      const answer = await askAdvisorWithGemini(activePerson, q, lang);
+      const idToken = currentUser ? await getFreshIdToken(currentUser) : null;
+      const answer = await askAdvisorWithGemini(activePerson, q, lang, idToken);
       setActiveEngine('gemini');
       setAdvisorAnswer(answer);
     } catch (err) {
@@ -1084,6 +1245,8 @@ export default function App() {
       const errCode = err instanceof Error ? err.message : '';
       if (errCode === 'AI_DISABLED_BY_ADMIN') {
         setSharedAiEnabled(false);
+      } else if (errCode === 'GUEST_AI_DISABLED') {
+        setGuestAiEnabled(false);
       }
       if (errCode && errCode !== 'NO_API_KEY' && errCode !== 'LOCAL_ONLY_MODE') {
         showToast(formatGeminiFallbackReason(err, lang), 'warning');
@@ -1099,6 +1262,7 @@ export default function App() {
     setSummaryOpen(true);
     if (summaryLoading) return;
 
+    trackFeatureUsage(mode === 'all' ? 'dossier_all' : 'dossier_single');
     setSummaryLoading(true);
     let data: DossierData;
     let engineUsed: 'gemini' | 'local' = 'gemini';
@@ -1109,17 +1273,22 @@ export default function App() {
         isOnline: navigator.onLine,
         sharedAiEnabled,
         serverKeyConfigured,
+        isGuest: !currentUser,
+        guestAiEnabled,
       });
       if (!policy.useCloud) {
         throw new Error(policy.reason || 'NO_API_KEY');
       }
-      data = await buildDossierWithGemini(mode, activePerson, people, lang);
+      const idToken = currentUser ? await getFreshIdToken(currentUser) : null;
+      data = await buildDossierWithGemini(mode, activePerson, people, lang, idToken);
       engineUsed = 'gemini';
     } catch (err) {
       engineUsed = 'local';
       const errCode = err instanceof Error ? err.message : '';
       if (errCode === 'AI_DISABLED_BY_ADMIN') {
         setSharedAiEnabled(false);
+      } else if (errCode === 'GUEST_AI_DISABLED') {
+        setGuestAiEnabled(false);
       }
       if (errCode && errCode !== 'NO_API_KEY' && errCode !== 'LOCAL_ONLY_MODE') {
         showToast(formatGeminiFallbackReason(err, lang), 'warning');
@@ -1198,6 +1367,10 @@ export default function App() {
   };
 
   const handleImportJsonFile = (file: File) => {
+    if (readOnlyRef.current) {
+      showToast(tRef.current.readOnly.blockedActionToast, 'warning');
+      return;
+    }
     const reader = new FileReader();
     reader.onload = async (ev) => {
       try {
@@ -1237,6 +1410,7 @@ export default function App() {
           reminder.isBirthday || isAnnualEventFact('', reminder.factText),
         description: reminder.factText,
       });
+      trackFeatureUsage('calendar_ics');
       showToast(t.toasts.calendarExported(title), 'success');
     },
     [showToast, t]
@@ -1256,10 +1430,67 @@ export default function App() {
         isRecurringYearly: extracted.isYearly,
         description: `${colTitle}: ${factText}`,
       });
+      trackFeatureUsage('calendar_ics');
       showToast(t.toasts.calendarExported(title), 'success');
     },
     [activePerson, showToast, t]
   );
+
+  const hasModalOpen =
+    accountOpen ||
+    adminModalOpen ||
+    deleteAccountOpen ||
+    addPersonOpen ||
+    addColumnOpen ||
+    addMeetingOpen ||
+    apiSettingsOpen ||
+    confirmState.open ||
+    summaryOpen;
+
+  const handleWorkspaceTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    workspaceSwipeRef.current = createSwipeSession({
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      now: Date.now(),
+      isMobileViewport: isMobileViewportWidth(window.innerWidth),
+      isDrawerOpen: mobileSidebarOpen,
+      hasBlockingOverlay: hasModalOpen || isDocumentScrollLocked(),
+      ignoreTarget: shouldIgnoreSwipeTarget(e.target),
+    });
+  };
+
+  const handleWorkspaceTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    const session = workspaceSwipeRef.current;
+    if (!session || session.mode !== 'open' || e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    const decision = evaluateSwipeMove(session, {
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+    });
+    if (decision === 'open') {
+      workspaceSwipeRef.current = null;
+      setMobileSidebarOpen(true);
+    } else if (decision === 'cancel') {
+      workspaceSwipeRef.current = null;
+    }
+  };
+
+  const handleWorkspaceTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    const session = workspaceSwipeRef.current;
+    workspaceSwipeRef.current = null;
+    if (!session || session.mode !== 'open' || e.changedTouches.length === 0) return;
+    const touch = e.changedTouches[0];
+    const result = evaluateSwipeEnd(session, {
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      now: Date.now(),
+    });
+    if (result === 'open') {
+      setMobileSidebarOpen(true);
+    }
+  };
 
   const pendingCount = pendingQueue.upsertIds.length + pendingQueue.deleteIds.length;
 
@@ -1303,7 +1534,7 @@ export default function App() {
         ) : (
           <motion.div
             key="screen-workspace"
-            variants={windowEnterVariants}
+            variants={fadeEnterVariants}
             initial="initial"
             animate="animate"
             transition={WINDOW_TRANSITION}
@@ -1337,7 +1568,15 @@ export default function App() {
             onExportReminderCalendar={handleExportReminderCalendar}
           />
 
-          <div className="flex-1 min-w-0 flex flex-col">
+          <div
+            className="flex-1 min-w-0 flex flex-col touch-pan-y"
+            onTouchStart={handleWorkspaceTouchStart}
+            onTouchMove={handleWorkspaceTouchMove}
+            onTouchEnd={handleWorkspaceTouchEnd}
+            onTouchCancel={() => {
+              workspaceSwipeRef.current = null;
+            }}
+          >
             <OfflineIndicator />
             {/* Compact mobile bar */}
             <header
@@ -1382,7 +1621,143 @@ export default function App() {
               </div>
             </header>
 
+            {readOnlyMode && (
+              <div
+                role="status"
+                className="px-4 py-2 border-b text-xs font-medium flex items-center justify-center gap-2"
+                style={{
+                  backgroundColor: 'var(--warning-bg)',
+                  borderColor: 'var(--warning-border)',
+                  color: 'var(--warning-text)',
+                }}
+              >
+                <Lock className="w-3.5 h-3.5 shrink-0" />
+                <span>{t.readOnly.bannerTitle}</span>
+              </div>
+            )}
+
+            {announcement?.enabled &&
+              announcement.text.trim() &&
+              announcementDismissedText !== announcement.text && (
+                <div
+                  role="region"
+                  aria-label={t.adminPanel.bannerTitle}
+                  className="px-4 py-2 border-b text-xs font-medium flex items-center justify-between gap-3"
+                  style={{
+                    backgroundColor:
+                      announcement.tone === 'danger'
+                        ? 'var(--danger-bg)'
+                        : announcement.tone === 'warning'
+                        ? 'var(--warning-bg)'
+                        : 'var(--bg-elevated)',
+                    borderColor:
+                      announcement.tone === 'danger'
+                        ? 'var(--danger-border)'
+                        : announcement.tone === 'warning'
+                        ? 'var(--warning-border)'
+                        : 'var(--border-color)',
+                    color:
+                      announcement.tone === 'danger'
+                        ? 'var(--danger-text)'
+                        : announcement.tone === 'warning'
+                        ? 'var(--warning-text)'
+                        : 'var(--text-primary)',
+                  }}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Megaphone className="w-3.5 h-3.5 shrink-0" />
+                    <span className="break-words">{announcement.text}</span>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={t.common.closeNotice}
+                    onClick={() => setAnnouncementDismissedText(announcement.text)}
+                    className="p-0.5 rounded opacity-70 hover:opacity-100 shrink-0"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
             <main className="max-w-[960px] w-full mx-auto px-4 sm:px-8 py-6 sm:py-8 flex-1 flex flex-col">
+              {poll?.enabled &&
+                poll.question.trim() &&
+                poll.options.length >= 2 &&
+                pollDismissedId !== poll.id && (
+                  <div
+                    className="mb-5 rounded-lg border p-3.5 space-y-2.5"
+                    style={{
+                      backgroundColor: 'var(--bg-surface)',
+                      borderColor: 'var(--border-color)',
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+                          <span>
+                            {pollVotedMap[poll.id] ? t.pollWidget.votedBadge : t.pollWidget.badge}
+                          </span>
+                        </div>
+                        <h3 className="text-[13.5px] font-semibold mt-0.5">{poll.question}</h3>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setPollDismissedId(poll.id)}
+                        aria-label={t.pollWidget.dismissAria}
+                        className="p-1 rounded hover:bg-[var(--bg-hover)] shrink-0"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                      {(() => {
+                        const totalVotes = poll.options.reduce((sum, o) => sum + o.votes, 0);
+                        const myChoice = pollVotedMap[poll.id];
+                        return poll.options.map((opt) => {
+                          const pct = totalVotes > 0 ? Math.round((opt.votes / totalVotes) * 100) : 0;
+                          const chosen = myChoice === opt.id;
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              disabled={Boolean(myChoice) || votingPoll}
+                              onClick={() => void handleVotePoll(opt.id)}
+                              className="relative overflow-hidden rounded-md border px-3 py-2 text-left text-xs transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-default"
+                              style={{
+                                backgroundColor: 'var(--bg-input)',
+                                borderColor: chosen ? 'var(--accent)' : 'var(--border-color)',
+                              }}
+                            >
+                              {myChoice && (
+                                <span
+                                  aria-hidden="true"
+                                  className="absolute inset-y-0 left-0 opacity-15"
+                                  style={{
+                                    width: `${pct}%`,
+                                    backgroundColor: 'var(--accent)',
+                                  }}
+                                />
+                              )}
+                              <div className="relative z-10 flex items-center justify-between gap-2">
+                                <span className="inline-flex items-center gap-1.5 font-medium">
+                                  {chosen && <CheckCircle2 className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent)' }} />}
+                                  <span>{opt.label}</span>
+                                </span>
+                                {myChoice && (
+                                  <span className="tabular-nums font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                                    {pct}% · {t.pollWidget.votesCount(opt.votes)}
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        });
+                      })()}
+                    </div>
+                  </div>
+                )}
+
               {!activePerson ? (
                 <motion.div
                   key="person-empty"
@@ -1420,7 +1795,11 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => {
-                        const sample = createDefaultSampleState();
+                        if (readOnlyRef.current) {
+                          showToast(tRef.current.readOnly.blockedActionToast, 'warning');
+                          return;
+                        }
+                        const sample = createDefaultSampleState(sampleTemplate);
                         setPeople(sample.people);
                         setActivePersonId(sample.activePersonId);
                         persistLocalSnapshot(
@@ -1515,7 +1894,9 @@ export default function App() {
                   advisorAnswer={advisorAnswer}
                   isAskingAdvisor={isAskingAdvisor}
                   onDraftChange={setDraftText}
-                  onFillDemo={() => setDraftText(DEMO_SAMPLE_TEXT)}
+                  onFillDemo={() =>
+                    setDraftText(sampleTemplate?.demoNoteText || DEMO_SAMPLE_TEXT)
+                  }
                   onClearDraft={() => setDraftText('')}
                   onAnalyze={handleAnalyzeText}
                   onUndoAnalysis={handleUndoAnalysis}
@@ -1523,7 +1904,10 @@ export default function App() {
                   onAdvisorQueryChange={setAdvisorQuery}
                   onAskAdvisor={handleAskAdvisor}
                   onDismissAdvisor={() => setAdvisorAnswer('')}
-                  onChatCleaned={() => showToast(t.toasts.chatCleanedToast, 'info')}
+                  onChatCleaned={() => {
+                    trackFeatureUsage('chat_clean');
+                    showToast(t.toasts.chatCleanedToast, 'info');
+                  }}
                 />
 
                 <ColumnsGrid
@@ -1690,10 +2074,11 @@ export default function App() {
             pendingCount={pendingCount}
             isSyncing={isSyncing}
             isAdmin={isAdminUser(currentUser)}
-            sharedAiEnabled={sharedAiEnabled}
-            serverKeyConfigured={serverKeyConfigured}
-            isTogglingSharedAi={isTogglingSharedAi}
-            onToggleSharedAi={handleToggleSharedAi}
+            onOpenAdminPanel={() => {
+              setAccountOpen(false);
+              setAdminModalOpen(true);
+            }}
+            onSubmitFeedback={handleSubmitFeedback}
             onClose={() => setAccountOpen(false)}
             onRefreshAccount={handleRefreshAccountStatus}
             onManualSync={handleManualSync}
@@ -1718,6 +2103,39 @@ export default function App() {
                   }
                 : undefined
             }
+            onToast={showToast}
+          />
+
+          <AdminModal
+            open={adminModalOpen}
+            user={currentUser}
+            onClose={() => setAdminModalOpen(false)}
+            onConfigSynced={(patch) => {
+              if (typeof patch.sharedAiEnabled === 'boolean') {
+                setSharedAiEnabled(patch.sharedAiEnabled);
+              }
+              if (typeof patch.guestAiEnabled === 'boolean') {
+                setGuestAiEnabled(patch.guestAiEnabled);
+              }
+              if (typeof patch.readOnlyMode === 'boolean') {
+                setReadOnlyMode(patch.readOnlyMode);
+              }
+              if (patch.keyRouteMode) {
+                setKeyRouteMode(patch.keyRouteMode);
+              }
+              if (typeof patch.serverKeyConfigured === 'boolean') {
+                setServerKeyConfigured(patch.serverKeyConfigured);
+              }
+              if (patch.announcement) {
+                setAnnouncement(patch.announcement);
+              }
+              if (patch.sampleTemplate) {
+                setSampleTemplate(patch.sampleTemplate);
+              }
+              if (patch.poll) {
+                setPoll(patch.poll);
+              }
+            }}
             onToast={showToast}
           />
 

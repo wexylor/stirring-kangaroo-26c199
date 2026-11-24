@@ -227,30 +227,34 @@ const ColumnCard: React.FC<ColumnCardProps> = ({
 
                   <AnimatePresence initial={false}>
                     {hasHistory && isHistoryOpen && (
-                      <motion.ol
+                      <motion.div
                         key={`hist-${fact.id}`}
                         variants={collapseVariants}
                         initial="initial"
                         animate="animate"
                         exit="exit"
                         transition={FAST_TRANSITION}
-                        className="mt-1.5 pl-2.5 border-l-2 space-y-1 text-[11.5px] overflow-hidden"
-                        style={{
-                          borderColor: 'var(--border-color)',
-                          color: 'var(--text-secondary)',
-                        }}
+                        className="overflow-hidden"
                       >
-                        {historyEntries.map((entry, idx) => (
-                          <li key={`${fact.id}_hist_${idx}`} className="leading-snug">
-                            <span className="line-through opacity-75">{entry.text}</span>
-                            {entry.changedAt && (
-                              <span className="ml-1.5 text-[10.5px]" style={{ color: 'var(--text-muted)' }}>
-                                ({formatDateTime(entry.changedAt, lang)})
-                              </span>
-                            )}
-                          </li>
-                        ))}
-                      </motion.ol>
+                        <ol
+                          className="mt-1.5 pl-2.5 border-l-2 space-y-1 text-[11.5px]"
+                          style={{
+                            borderColor: 'var(--border-color)',
+                            color: 'var(--text-secondary)',
+                          }}
+                        >
+                          {historyEntries.map((entry, idx) => (
+                            <li key={`${fact.id}_hist_${idx}`} className="leading-snug">
+                              <span className="line-through opacity-75">{entry.text}</span>
+                              {entry.changedAt && (
+                                <span className="ml-1.5 text-[10.5px]" style={{ color: 'var(--text-muted)' }}>
+                                  ({formatDateTime(entry.changedAt, lang)})
+                                </span>
+                              )}
+                            </li>
+                          ))}
+                        </ol>
+                      </motion.div>
                     )}
                   </AnimatePresence>
                 </div>

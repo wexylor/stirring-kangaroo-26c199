@@ -23,6 +23,7 @@ import {
   getDatabase,
   ref,
   set,
+  update,
   remove,
   onValue,
   type Database,
@@ -287,19 +288,34 @@ export async function updateUserProfileInCloud(user: User): Promise<void> {
   });
 }
 
+let cloudWriteBlockedByReadOnly = false;
+
+export function setCloudWriteBlockedByReadOnly(blocked: boolean): void {
+  cloudWriteBlockedByReadOnly = blocked;
+}
+
 // Targeted per-person cloud write: prevents overwriting changes made from another device!
 export async function savePersonToCloud(uid: string, person: Person): Promise<void> {
+  if (cloudWriteBlockedByReadOnly) {
+    throw new Error('READ_ONLY_MODE');
+  }
   const { db } = getFirebaseServices();
   const cleanPerson = JSON.parse(JSON.stringify(person));
   await set(ref(db, `users/${uid}/people/${person.id}`), cleanPerson);
 }
 
 export async function deletePersonFromCloud(uid: string, personId: string): Promise<void> {
+  if (cloudWriteBlockedByReadOnly) {
+    throw new Error('READ_ONLY_MODE');
+  }
   const { db } = getFirebaseServices();
   await remove(ref(db, `users/${uid}/people/${personId}`));
 }
 
 export async function syncPeopleMapToCloud(uid: string, people: Person[]): Promise<void> {
+  if (cloudWriteBlockedByReadOnly) {
+    throw new Error('READ_ONLY_MODE');
+  }
   const { db } = getFirebaseServices();
   const mapObj: Record<string, Person> = {};
   for (const p of people) {
@@ -369,7 +385,13 @@ export function subscribeGlobalAiConfig(
     cfgRef,
     (snapshot) => {
       if (!snapshot.exists()) {
-        onData({ sharedAiEnabled: true });
+        onData({
+          sharedAiEnabled: true,
+          guestAiEnabled: true,
+          readOnlyMode: false,
+          keyRouteMode: 'auto',
+          aiModelPreset: 'balanced',
+        });
         return;
       }
       onData(parseGlobalAiConfig(snapshot.val()));
@@ -380,14 +402,28 @@ export function subscribeGlobalAiConfig(
   );
 }
 
+export async function setGlobalControlPatchInCloud(
+  user: User,
+  patch: Record<string, unknown>
+): Promise<void> {
+  const { db } = getFirebaseServices();
+  await update(ref(db, 'appConfig/aiSettings'), {
+    ...patch,
+    updatedAt: new Date().toISOString(),
+    updatedBy: user.uid,
+  });
+}
+
 export async function setGlobalAiEnabledInCloud(
   user: User,
   sharedAiEnabled: boolean
 ): Promise<void> {
-  const { db } = getFirebaseServices();
-  await set(ref(db, 'appConfig/aiSettings'), {
-    sharedAiEnabled,
-    updatedAt: new Date().toISOString(),
-    updatedBy: user.uid,
-  });
+  await setGlobalControlPatchInCloud(user, { sharedAiEnabled });
+}
+
+export async function setGlobalAiKeyRouteInCloud(
+  user: User,
+  keyRouteMode: 'auto' | 'primary' | 'backup'
+): Promise<void> {
+  await setGlobalControlPatchInCloud(user, { keyRouteMode });
 }

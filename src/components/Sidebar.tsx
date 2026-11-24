@@ -17,16 +17,27 @@ import type { CloudSyncStatus, Person, UpcomingDateReminder } from '../types/not
 import { getAvatarGradient, DEFAULT_GROUPS } from '../data/sampleData';
 import { getInitials } from '../utils/storage';
 import { getDaysSinceLastContact } from '../utils/dateReminders';
+import { useLiveMinute } from '../utils/liveClock';
 import { UpcomingRemindersBar } from './UpcomingRemindersBar';
 import { PWAInstallButton } from './PWAInstallButton';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { useI18n } from '../utils/LanguageContext';
 import { translateGroupLabel } from '../utils/i18n';
+import { useScrollLock } from '../utils/scrollLock';
+import {
+  createSwipeSession,
+  evaluateSwipeEnd,
+  evaluateSwipeMove,
+  isMobileViewportWidth,
+  shouldIgnoreSwipeTarget,
+  type DrawerSwipeSession,
+} from '../utils/swipeDrawer';
 import {
   DRAWER_TRANSITION,
   FAST_TRANSITION,
   TAB_SPRING_TRANSITION,
   backdropVariants,
+  containerOrchestratorVariants,
   drawerLeftVariants,
 } from '../utils/motionPresets';
 
@@ -104,16 +115,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onExportReminderCalendar,
 }) => {
   const { lang, t } = useI18n();
+  useLiveMinute();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const swipeSessionRef = useRef<DrawerSwipeSession | null>(null);
   const query = searchQuery.trim().toLowerCase();
+
+  useScrollLock(mobileOpen);
 
   useEffect(() => {
     if (!mobileOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onCloseMobile();
     };
+    const handleResize = () => {
+      if (!isMobileViewportWidth(window.innerWidth)) {
+        onCloseMobile();
+      }
+    };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('resize', handleResize);
+    };
   }, [mobileOpen, onCloseMobile]);
 
   const customGroups = Array.from(
@@ -160,6 +184,51 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onCloseMobile();
   };
 
+  const handleDrawerTouchStart = (e: React.TouchEvent<HTMLElement>) => {
+    if (!mobileOpen || e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    swipeSessionRef.current = createSwipeSession({
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      now: Date.now(),
+      isMobileViewport: isMobileViewportWidth(window.innerWidth),
+      isDrawerOpen: true,
+      hasBlockingOverlay: false,
+      ignoreTarget: shouldIgnoreSwipeTarget(e.target),
+    });
+  };
+
+  const handleDrawerTouchMove = (e: React.TouchEvent<HTMLElement>) => {
+    const session = swipeSessionRef.current;
+    if (!session || e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    const decision = evaluateSwipeMove(session, {
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+    });
+    if (decision === 'close') {
+      swipeSessionRef.current = null;
+      onCloseMobile();
+    } else if (decision === 'cancel') {
+      swipeSessionRef.current = null;
+    }
+  };
+
+  const handleDrawerTouchEnd = (e: React.TouchEvent<HTMLElement>) => {
+    const session = swipeSessionRef.current;
+    swipeSessionRef.current = null;
+    if (!session || e.changedTouches.length === 0) return;
+    const touch = e.changedTouches[0];
+    const result = evaluateSwipeEnd(session, {
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      now: Date.now(),
+    });
+    if (result === 'close') {
+      onCloseMobile();
+    }
+  };
+
   const renderSidebarContent = (isMobileDrawer: boolean) => (
     <div className="flex flex-col h-full">
       {/* Brand + Add person */}
@@ -193,7 +262,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span>{t.sidebar.addContactBtn}</span>
           </button>
 
-          {mobileOpen && (
+          {isMobileDrawer && (
             <button
               type="button"
               onClick={onCloseMobile}
@@ -215,7 +284,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             style={{ color: 'var(--text-muted)' }}
           />
           <input
-            id="searchInput"
+            id={isMobileDrawer ? 'mobileSearchInput' : 'searchInput'}
             type="search"
             name="notebook_filter_query"
             autoComplete="off"
@@ -248,39 +317,41 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {people.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1" role="tablist" aria-label={t.sidebar.groupsAria}>
-            {groupTabs.map((grp) => {
-              const active = selectedGroup === grp;
-              const count =
-                grp === 'Все'
-                  ? people.length
-                  : people.filter((p) => (p.group || '').trim() === grp).length;
-              if (grp !== 'Все' && count === 0 && !DEFAULT_GROUPS.includes(grp)) return null;
-              return (
-                <button
-                  key={grp}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => onSelectGroup(grp)}
-                  className="relative px-2 py-0.5 rounded text-[11.5px] font-medium whitespace-nowrap shrink-0 transition-colors"
-                  style={{
-                    color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  }}
-                >
-                  {active && (
-                    <motion.span
-                      layoutId={isMobileDrawer ? 'sidebarGroupMobile' : 'sidebarGroupDesktop'}
-                      transition={TAB_SPRING_TRANSITION}
-                      className="absolute inset-0 rounded"
-                      style={{ backgroundColor: 'var(--bg-hover)' }}
-                    />
-                  )}
-                  <span className="relative z-10">{translateGroupLabel(grp, lang)}</span>
-                </button>
-              );
-            })}
-          </div>
+          <LayoutGroup id={isMobileDrawer ? 'sidebar-tabs-mobile' : 'sidebar-tabs-desktop'}>
+            <div className="flex flex-wrap items-center gap-1" role="tablist" aria-label={t.sidebar.groupsAria}>
+              {groupTabs.map((grp) => {
+                const active = selectedGroup === grp;
+                const count =
+                  grp === 'Все'
+                    ? people.length
+                    : people.filter((p) => (p.group || '').trim() === grp).length;
+                if (grp !== 'Все' && count === 0 && !DEFAULT_GROUPS.includes(grp)) return null;
+                return (
+                  <button
+                    key={grp}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => onSelectGroup(grp)}
+                    className="relative px-2 py-0.5 rounded text-[11.5px] font-medium whitespace-nowrap shrink-0 transition-colors"
+                    style={{
+                      color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    }}
+                  >
+                    {active && (
+                      <motion.span
+                        layoutId={isMobileDrawer ? 'sidebarGroupMobile' : 'sidebarGroupDesktop'}
+                        transition={TAB_SPRING_TRANSITION}
+                        className="absolute inset-0 rounded"
+                        style={{ backgroundColor: 'var(--bg-hover)' }}
+                      />
+                    )}
+                    <span className="relative z-10">{translateGroupLabel(grp, lang)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </LayoutGroup>
         )}
       </div>
 
@@ -292,7 +363,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       />
 
       {/* Contacts list */}
-      <nav className="flex-1 overflow-y-auto px-2 py-2 thin-scrollbar" aria-label={t.sidebar.contactsNavAria}>
+      <nav
+        className="flex-1 overflow-y-auto overscroll-contain px-2 py-2 thin-scrollbar"
+        aria-label={t.sidebar.contactsNavAria}
+      >
         {visiblePeople.length === 0 ? (
           <div className="px-2 py-6 text-center text-xs" style={{ color: 'var(--text-muted)' }}>
             {people.length === 0
@@ -485,29 +559,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Mobile slide-over drawer */}
       <AnimatePresence>
         {mobileOpen && (
-          <div
+          <motion.div
             key="mobile-sidebar-drawer"
-            className="fixed inset-0 z-50 lg:hidden flex"
+            variants={containerOrchestratorVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            onTouchStart={handleDrawerTouchStart}
+            onTouchMove={handleDrawerTouchMove}
+            onTouchEnd={handleDrawerTouchEnd}
+            onTouchCancel={() => {
+              swipeSessionRef.current = null;
+            }}
+            className="fixed inset-0 z-50 lg:hidden flex overscroll-contain touch-pan-y"
             role="dialog"
             aria-modal="true"
             aria-label={t.sidebar.mobileNavAria}
           >
             <motion.div
               variants={backdropVariants}
-              initial="initial"
-              animate="animate"
-              exit="exit"
               transition={FAST_TRANSITION}
-              className="fixed inset-0 bg-black/60 backdrop-blur-[1px]"
+              className="fixed inset-0 bg-black/60 backdrop-blur-[1px] overscroll-contain"
               onClick={onCloseMobile}
             />
             <motion.aside
               variants={drawerLeftVariants}
-              initial="initial"
-              animate="animate"
-              exit="exit"
               transition={DRAWER_TRANSITION}
-              className="relative z-10 w-[284px] max-w-[85vw] h-full border-r flex flex-col shadow-2xl"
+              className="relative z-10 w-[284px] max-w-[85vw] h-full border-r flex flex-col shadow-2xl overscroll-contain"
               style={{
                 backgroundColor: 'var(--bg-sidebar)',
                 borderColor: 'var(--border-color)',
@@ -515,7 +593,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             >
               {renderSidebarContent(true)}
             </motion.aside>
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </>

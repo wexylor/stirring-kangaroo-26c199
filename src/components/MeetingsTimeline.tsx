@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import type { MeetingType, Person } from '../types/notebook';
 import { formatShortDate } from '../utils/storage';
 import { formatDaysForLang, getDaysSinceLastContact } from '../utils/dateReminders';
+import { useLiveMinute } from '../utils/liveClock';
 import { useI18n } from '../utils/LanguageContext';
 import { FAST_TRANSITION, collapseVariants } from '../utils/motionPresets';
 
@@ -26,6 +27,7 @@ export const MeetingsTimeline: React.FC<MeetingsTimelineProps> = ({
   onDeleteMeeting,
 }) => {
   const { lang, t } = useI18n();
+  useLiveMinute();
   const [open, setOpen] = useState(true);
   const meetings = person.meetings || [];
   const daysSince = getDaysSinceLastContact(person);

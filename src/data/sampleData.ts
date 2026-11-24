@@ -1,5 +1,10 @@
-import type { Person } from '../types/notebook';
+import type { Column, Person } from '../types/notebook';
 import { uid } from '../utils/storage';
+import {
+  createDefaultSampleTemplate,
+  sanitizeSampleTemplate,
+  type SampleContactTemplate,
+} from '../utils/adminOps';
 
 export const AVATAR_COLORS = [
   { id: 'violet', bg: '#3f3f46' },
@@ -17,19 +22,17 @@ export function getAvatarGradient(colorId: string): string {
   return found ? found.bg : AVATAR_COLORS[0].bg;
 }
 
-export const DEMO_SAMPLE_TEXT =
-  'Сегодня долго болтали с Алиной! Оказывается, она недавно полностью отказалась от кофе и теперь пьёт только японскую матчу на овсяном молоке. ' +
-  'Выяснил, что у неё сильная аллергия на арахис и мёд. Дома у неё живёт рыжий кот по кличке Персик. ' +
-  'Она всегда приходит на встречи за 10 минут заранее и строит планы на месяц вперёд. ' +
-  'Ещё Алина призналась, что давно мечтает научиться играть на укулеле, но пока не решалась купить инструмент, а осенью хочет съездить в Японию и увидеть Киото.';
+export const DEMO_SAMPLE_TEXT = createDefaultSampleTemplate().demoNoteText;
 
-export function createDefaultSampleState(): {
+export function createDefaultSampleState(customTemplate?: SampleContactTemplate | null): {
   activePersonId: string;
   people: Person[];
 } {
+  const tpl = customTemplate
+    ? sanitizeSampleTemplate(customTemplate)
+    : createDefaultSampleTemplate();
   const personId = uid('person');
   const now = new Date();
-  // Create a sample birthday 5 days from today so the smart reminder works out-of-the-box for testing
   const upcomingBday = new Date(now.getTime() + 5 * 86400000);
   const monthNamesGenitive = [
     'января',
@@ -51,170 +54,68 @@ export function createDefaultSampleState(): {
     .toISOString()
     .slice(0, 10);
 
+  const groupedCols = new Map<string, Column>();
+  for (const item of tpl.facts) {
+    const existing = groupedCols.get(item.columnTitle);
+    const factEntry = {
+      id: uid('fact'),
+      text: item.text,
+      isNew: false,
+      tag: 'fact' as const,
+      reason: '',
+      prevText: '',
+    };
+    if (existing) {
+      existing.facts.push(factEntry);
+    } else {
+      groupedCols.set(item.columnTitle, {
+        id: uid('col'),
+        title: item.columnTitle,
+        icon: item.icon || '📌',
+        isNew: false,
+        facts: [factEntry],
+      });
+    }
+  }
+
+  if (!groupedCols.has('Важные даты')) {
+    groupedCols.set('Важные даты', {
+      id: uid('col'),
+      title: 'Важные даты',
+      icon: '📅',
+      isNew: false,
+      facts: [
+        {
+          id: uid('fact'),
+          text: `День рождения — ${sampleBdayLabel}`,
+          isNew: false,
+          tag: 'fact',
+          reason: '',
+          prevText: '',
+        },
+      ],
+    });
+  }
+
   return {
     activePersonId: personId,
     people: [
       {
         id: personId,
-        name: 'Алина',
-        subtitle: 'Подруга и продакт-дизайнер',
+        name: tpl.name,
+        subtitle: tpl.subtitle,
         colorId: 'violet',
         updatedAt: now.toISOString(),
         isPinned: true,
-        group: 'Друзья',
+        group: tpl.group,
         contactIntervalDays: 14,
         lastContactAt: new Date(now.getTime() - 10 * 86400000).toISOString(),
-        columns: [
-          {
-            id: uid('col'),
-            title: 'Нравится',
-            icon: '❤️',
-            isNew: false,
-            facts: [
-              {
-                id: uid('fact'),
-                text: 'Уютные кофейни с тихим джазом',
-                isNew: false,
-                tag: 'fact',
-                reason: '',
-                prevText: '',
-              },
-              {
-                id: uid('fact'),
-                text: 'Скандинавский минимализм и тёплый свет',
-                isNew: false,
-                tag: 'fact',
-                reason: '',
-                prevText: '',
-              },
-              {
-                id: uid('fact'),
-                text: 'Дождливые вечера дома с хорошей книгой',
-                isNew: false,
-                tag: 'fact',
-                reason: '',
-                prevText: '',
-              },
-            ],
-          },
-          {
-            id: uid('col'),
-            title: 'Не нравится',
-            icon: '👎',
-            isNew: false,
-            facts: [
-              {
-                id: uid('fact'),
-                text: 'Когда опаздывают на встречи без предупреждения',
-                isNew: false,
-                tag: 'fact',
-                reason: '',
-                prevText: '',
-              },
-              {
-                id: uid('fact'),
-                text: 'Шумные торговые центры по выходным',
-                isNew: false,
-                tag: 'fact',
-                reason: '',
-                prevText: '',
-              },
-            ],
-          },
-          {
-            id: uid('col'),
-            title: 'Увлечения',
-            icon: '🎯',
-            isNew: false,
-            facts: [
-              {
-                id: uid('fact'),
-                text: 'Плёночная фотография (снимает на старый Olympus)',
-                isNew: false,
-                tag: 'fact',
-                reason: '',
-                prevText: '',
-              },
-              {
-                id: uid('fact'),
-                text: 'Утренние пробежки в парке по субботам',
-                isNew: false,
-                tag: 'fact',
-                reason: '',
-                prevText: '',
-              },
-            ],
-          },
-          {
-            id: uid('col'),
-            title: 'Еда и напитки',
-            icon: '☕',
-            isNew: false,
-            facts: [
-              {
-                id: uid('fact'),
-                text: 'Пьёт раф-кофе на кокосовом молоке без сахара',
-                isNew: false,
-                tag: 'fact',
-                reason: '',
-                prevText: '',
-              },
-              {
-                id: uid('fact'),
-                text: 'Любит пасту с морепродуктами',
-                isNew: false,
-                tag: 'fact',
-                reason: '',
-                prevText: '',
-              },
-            ],
-          },
-          {
-            id: uid('col'),
-            title: 'Идеи подарков',
-            icon: '🎁',
-            isNew: false,
-            facts: [
-              {
-                id: uid('fact'),
-                text: 'Цветная фотоплёнка Kodak Portra 400 (35 мм)',
-                isNew: false,
-                tag: 'fact',
-                reason: '',
-                prevText: '',
-              },
-              {
-                id: uid('fact'),
-                text: 'Сертификат на гончарный мастер-класс',
-                isNew: false,
-                tag: 'fact',
-                reason: '',
-                prevText: '',
-              },
-            ],
-          },
-          {
-            id: uid('col'),
-            title: 'Важные даты',
-            icon: '📅',
-            isNew: false,
-            facts: [
-              {
-                id: uid('fact'),
-                text: `День рождения — ${sampleBdayLabel}`,
-                isNew: false,
-                tag: 'fact',
-                reason: '',
-                prevText: '',
-              },
-            ],
-          },
-        ],
+        columns: Array.from(groupedCols.values()),
         rawNotes: [
           {
             id: uid('note'),
             createdAt: new Date(now.getTime() - 10 * 86400000).toISOString(),
-            text: 'Познакомились на выставке плёночной фотографии. Алина снимает на старый Olympus, обожает тихие кофейни с джазом и кокосовый раф без сахара, бегает по субботам в парке и очень не любит, когда люди опаздывают.',
+            text: tpl.demoNoteText,
           },
         ],
         meetings: [
@@ -222,7 +123,7 @@ export function createDefaultSampleState(): {
             id: uid('meet'),
             date: oldMeetingDate,
             type: 'meeting',
-            summary: 'Пили кофе после выставки, обсуждали плёночную фотографию и планы на осень.',
+            summary: 'Первая встреча и знакомство.',
             createdAt: new Date(now.getTime() - 10 * 86400000).toISOString(),
           },
         ],

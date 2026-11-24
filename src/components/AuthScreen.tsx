@@ -173,48 +173,50 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               animate="animate"
               exit="exit"
               transition={FAST_TRANSITION}
-              className="overflow-hidden mb-4"
+              className="overflow-hidden"
             >
-              <div
-                className="grid grid-cols-2 gap-1 p-1 rounded-lg"
-                style={{ backgroundColor: 'var(--bg-elevated)' }}
-              >
-                <button
-                  type="button"
-                  onClick={() => switchMode('login')}
-                  className="relative py-1.5 px-3 rounded-md text-[13px] font-medium transition-colors"
-                  style={{
-                    color: mode === 'login' ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  }}
+              <div className="pb-4">
+                <div
+                  className="grid grid-cols-2 gap-1 p-1 rounded-lg"
+                  style={{ backgroundColor: 'var(--bg-elevated)' }}
                 >
-                  {mode === 'login' && (
-                    <motion.span
-                      layoutId="authModeTab"
-                      transition={TAB_SPRING_TRANSITION}
-                      className="absolute inset-0 rounded-md"
-                      style={{ backgroundColor: 'var(--bg-surface)' }}
-                    />
-                  )}
-                  <span className="relative z-10">{t.auth.tabLogin}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => switchMode('register')}
-                  className="relative py-1.5 px-3 rounded-md text-[13px] font-medium transition-colors"
-                  style={{
-                    color: mode === 'register' ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  }}
-                >
-                  {mode === 'register' && (
-                    <motion.span
-                      layoutId="authModeTab"
-                      transition={TAB_SPRING_TRANSITION}
-                      className="absolute inset-0 rounded-md"
-                      style={{ backgroundColor: 'var(--bg-surface)' }}
-                    />
-                  )}
-                  <span className="relative z-10">{t.auth.tabRegister}</span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => switchMode('login')}
+                    className="relative py-1.5 px-3 rounded-md text-[13px] font-medium transition-colors"
+                    style={{
+                      color: mode === 'login' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    }}
+                  >
+                    {mode === 'login' && (
+                      <motion.span
+                        layoutId="authModeTab"
+                        transition={TAB_SPRING_TRANSITION}
+                        className="absolute inset-0 rounded-md"
+                        style={{ backgroundColor: 'var(--bg-surface)' }}
+                      />
+                    )}
+                    <span className="relative z-10">{t.auth.tabLogin}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => switchMode('register')}
+                    className="relative py-1.5 px-3 rounded-md text-[13px] font-medium transition-colors"
+                    style={{
+                      color: mode === 'register' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    }}
+                  >
+                    {mode === 'register' && (
+                      <motion.span
+                        layoutId="authModeTab"
+                        transition={TAB_SPRING_TRANSITION}
+                        className="absolute inset-0 rounded-md"
+                        style={{ backgroundColor: 'var(--bg-surface)' }}
+                      />
+                    )}
+                    <span className="relative z-10">{t.auth.tabRegister}</span>
+                  </button>
+                </div>
               </div>
             </motion.div>
           )}
@@ -229,18 +231,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               animate="animate"
               exit="exit"
               transition={FAST_TRANSITION}
-              className="overflow-hidden mb-3.5"
+              className="overflow-hidden"
             >
-              <div
-                className="p-3 rounded-lg text-[12.5px] leading-relaxed border break-words"
-                role="alert"
-                style={{
-                  backgroundColor: 'var(--danger-bg)',
-                  borderColor: 'var(--danger-border)',
-                  color: 'var(--danger-text)',
-                }}
-              >
-                {errorMsg}
+              <div className="pb-3.5">
+                <div
+                  className="p-3 rounded-lg text-[12.5px] leading-relaxed border break-words"
+                  role="alert"
+                  style={{
+                    backgroundColor: 'var(--danger-bg)',
+                    borderColor: 'var(--danger-border)',
+                    color: 'var(--danger-text)',
+                  }}
+                >
+                  {errorMsg}
+                </div>
               </div>
             </motion.div>
           )}
@@ -255,25 +259,27 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               animate="animate"
               exit="exit"
               transition={FAST_TRANSITION}
-              className="overflow-hidden mb-3.5"
+              className="overflow-hidden"
             >
-              <div
-                className="p-3 rounded-lg text-[12.5px] leading-relaxed border"
-                role="status"
-                style={{
-                  backgroundColor: 'var(--success-bg)',
-                  borderColor: 'var(--success-border)',
-                  color: 'var(--success-text)',
-                }}
-              >
-                {resetSuccessMsg}
+              <div className="pb-3.5">
+                <div
+                  className="p-3 rounded-lg text-[12.5px] leading-relaxed border"
+                  role="status"
+                  style={{
+                    backgroundColor: 'var(--success-bg)',
+                    borderColor: 'var(--success-border)',
+                    color: 'var(--success-text)',
+                  }}
+                >
+                  {resetSuccessMsg}
+                </div>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        <div className="relative overflow-hidden">
-          <AnimatePresence mode="popLayout" initial={false} custom={modeDirection}>
+        <div className="relative -mx-1 px-1 py-0.5 overflow-hidden">
+          <AnimatePresence mode="wait" initial={false} custom={modeDirection}>
             {mode === 'forgot' ? (
               <motion.form
                 key="auth-form-forgot"

@@ -1,23 +1,86 @@
+import { resolveAiKeyRouteMode, type AiKeyRouteMode } from './aiKeyRouter.ts';
+import {
+  sanitizeAnnouncement,
+  sanitizePoll,
+  sanitizeSampleTemplate,
+  type FeaturePoll,
+  type GlobalAnnouncement,
+  type SampleContactTemplate,
+} from './adminOps.ts';
+
 export const ADMIN_UID = 'wpjbyZa4sxgd08ONeEgK5MHBexS2';
 export const STORAGE_ANALYZER_MODE = 'smart_people_notebook_analyzer_mode';
 
 export type AnalyzerPreferenceMode = 'auto' | 'local';
+export type AiModelPreset = 'fast' | 'balanced' | 'accurate';
+
+export interface AiModelOptionSpec {
+  preset: AiModelPreset;
+  modelId: 'gemini-3.1-flash-lite' | 'gemini-4-hydrogen';
+  thinkingLevel: 'MINIMAL' | 'LOW' | 'HIGH';
+}
+
+export const AI_MODEL_SPECS: Record<AiModelPreset, AiModelOptionSpec> = {
+  fast: {
+    preset: 'fast',
+    modelId: 'gemini-3.1-flash-lite',
+    thinkingLevel: 'MINIMAL',
+  },
+  balanced: {
+    preset: 'balanced',
+    modelId: 'gemini-4-hydrogen',
+    thinkingLevel: 'LOW',
+  },
+  accurate: {
+    preset: 'accurate',
+    modelId: 'gemini-4-hydrogen',
+    thinkingLevel: 'HIGH',
+  },
+};
+
+export function resolveAiModelPreset(raw: unknown): AiModelPreset {
+  if (raw === 'fast' || raw === 'balanced' || raw === 'accurate') {
+    return raw;
+  }
+  return 'balanced';
+}
+
+export function getAiModelSpec(preset: unknown): AiModelOptionSpec {
+  return AI_MODEL_SPECS[resolveAiModelPreset(preset)];
+}
 
 export interface GlobalAiConfig {
   sharedAiEnabled: boolean;
+  guestAiEnabled: boolean;
+  readOnlyMode: boolean;
+  keyRouteMode?: AiKeyRouteMode;
+  aiModelPreset?: AiModelPreset;
+  announcement?: GlobalAnnouncement;
+  sampleTemplate?: SampleContactTemplate;
+  poll?: FeaturePoll;
   updatedAt?: string;
   updatedBy?: string;
 }
 
 export interface ServerAiStatus {
   sharedAiEnabled: boolean;
+  guestAiEnabled: boolean;
+  readOnlyMode: boolean;
   serverKeyConfigured: boolean;
+  keyRouteMode?: AiKeyRouteMode;
+  aiModelPreset?: AiModelPreset;
+  serverStartedAtMs?: number;
+  geminiModel?: string;
+  announcement?: GlobalAnnouncement;
+  sampleTemplate?: SampleContactTemplate;
+  poll?: FeaturePoll;
 }
 
 export type CloudFallbackReasonCode =
   | 'LOCAL_ONLY_MODE'
   | 'OFFLINE'
   | 'AI_DISABLED_BY_ADMIN'
+  | 'GUEST_AI_DISABLED'
   | 'NO_API_KEY';
 
 export function isAdminUid(uid?: string | null, adminUid = ADMIN_UID): boolean {
@@ -31,15 +94,35 @@ export function resolveAnalyzerMode(raw?: string | null): AnalyzerPreferenceMode
 
 export function parseGlobalAiConfig(raw: unknown): GlobalAiConfig {
   if (!raw || typeof raw !== 'object') {
-    return { sharedAiEnabled: true };
+    return {
+      sharedAiEnabled: true,
+      guestAiEnabled: true,
+      readOnlyMode: false,
+      keyRouteMode: 'auto',
+      aiModelPreset: 'balanced',
+    };
   }
   const obj = raw as {
     sharedAiEnabled?: unknown;
+    guestAiEnabled?: unknown;
+    readOnlyMode?: unknown;
+    keyRouteMode?: unknown;
+    aiModelPreset?: unknown;
+    announcement?: unknown;
+    sampleTemplate?: unknown;
+    poll?: unknown;
     updatedAt?: unknown;
     updatedBy?: unknown;
   };
   return {
     sharedAiEnabled: typeof obj.sharedAiEnabled === 'boolean' ? obj.sharedAiEnabled : true,
+    guestAiEnabled: typeof obj.guestAiEnabled === 'boolean' ? obj.guestAiEnabled : true,
+    readOnlyMode: typeof obj.readOnlyMode === 'boolean' ? obj.readOnlyMode : false,
+    keyRouteMode: resolveAiKeyRouteMode(obj.keyRouteMode),
+    aiModelPreset: resolveAiModelPreset(obj.aiModelPreset),
+    announcement: obj.announcement ? sanitizeAnnouncement(obj.announcement) : undefined,
+    sampleTemplate: obj.sampleTemplate ? sanitizeSampleTemplate(obj.sampleTemplate) : undefined,
+    poll: obj.poll ? sanitizePoll(obj.poll) : undefined,
     updatedAt: typeof obj.updatedAt === 'string' ? obj.updatedAt : undefined,
     updatedBy: typeof obj.updatedBy === 'string' ? obj.updatedBy : undefined,
   };
@@ -50,6 +133,8 @@ export function shouldUseCloudAi(params: {
   isOnline: boolean;
   sharedAiEnabled: boolean;
   serverKeyConfigured: boolean;
+  isGuest?: boolean;
+  guestAiEnabled?: boolean;
 }): { useCloud: boolean; reason?: CloudFallbackReasonCode } {
   if (params.preferenceMode === 'local') {
     return { useCloud: false, reason: 'LOCAL_ONLY_MODE' };
@@ -59,6 +144,9 @@ export function shouldUseCloudAi(params: {
   }
   if (!params.sharedAiEnabled) {
     return { useCloud: false, reason: 'AI_DISABLED_BY_ADMIN' };
+  }
+  if (params.isGuest && params.guestAiEnabled === false) {
+    return { useCloud: false, reason: 'GUEST_AI_DISABLED' };
   }
   if (!params.serverKeyConfigured) {
     return { useCloud: false, reason: 'NO_API_KEY' };

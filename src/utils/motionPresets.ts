@@ -54,6 +54,17 @@ export const windowEnterVariants: Variants = {
   animate: { opacity: 1, y: 0 },
 };
 
+export const fadeEnterVariants: Variants = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1 },
+};
+
+export const containerOrchestratorVariants: Variants = {
+  initial: {},
+  animate: {},
+  exit: {},
+};
+
 export const collapseVariants: Variants = {
   initial: { opacity: 0, height: 0 },
   animate: { opacity: 1, height: 'auto' },
