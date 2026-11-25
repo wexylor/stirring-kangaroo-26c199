@@ -107,6 +107,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({
 
   const [tab, setTab] = useState<AdminTab>('overview');
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string>('');
   const [overview, setOverview] = useState<AdminOverviewSnapshot | null>(null);
   const [pwaStatusText, setPwaStatusText] = useState<string>('Browser');
 
@@ -225,10 +226,28 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   const loadOverview = async () => {
     if (!user) return;
     setLoading(true);
+    setLoadError('');
     try {
-      const token = await getFreshIdToken(user);
+      let token = await getFreshIdToken(user);
+      if (!token) {
+        token = await getFreshIdToken(user, true);
+      }
       if (!token) throw new Error('NO_TOKEN');
-      const data = await fetchAdminOverview(token);
+
+      let data: AdminOverviewSnapshot;
+      try {
+        data = await fetchAdminOverview(token);
+      } catch (firstErr) {
+        const msg = firstErr instanceof Error ? firstErr.message : '';
+        if (msg === 'HTTP_401' || msg === 'HTTP_403' || msg === 'UNAUTHORIZED') {
+          const refreshedToken = await getFreshIdToken(user, true);
+          if (!refreshedToken) throw firstErr;
+          data = await fetchAdminOverview(refreshedToken);
+        } else {
+          throw firstErr;
+        }
+      }
+
       setOverview(data);
       hydrateFormsFromOverview(data);
       onConfigSynced({
@@ -243,7 +262,9 @@ export const AdminModal: React.FC<AdminModalProps> = ({
         ...(data.uiDefaults ? { uiDefaults: data.uiDefaults } : {}),
         ...(data.minClientVersion ? { minClientVersion: data.minClientVersion } : {}),
       });
-    } catch {
+    } catch (err) {
+      const code = err instanceof Error ? err.message : 'ERROR';
+      setLoadError(code);
       onToast(t.account.adminToggleError, 'error');
     } finally {
       setLoading(false);
@@ -1017,7 +1038,28 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                 <div className="py-16 text-center text-sm" style={{ color: 'var(--text-secondary)' }}>
                   {t.adminPanel.loadingText}
                 </div>
-              ) : !overview ? null : tab === 'overview' ? (
+              ) : !overview ? (
+                <div className="py-12 px-4 max-w-md mx-auto text-center space-y-3">
+                  <AlertTriangle className="w-7 h-7 mx-auto" style={{ color: 'var(--warning-text)' }} />
+                  <div className="text-sm font-semibold">{t.adminPanel.loadErrorTitle}</div>
+                  <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                    {t.adminPanel.loadErrorDesc}
+                    {loadError ? ` (${loadError})` : ''}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={loadOverview}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md text-xs font-semibold hover:opacity-90"
+                    style={{
+                      backgroundColor: 'var(--btn-primary-bg)',
+                      color: 'var(--btn-primary-text)',
+                    }}
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>{t.adminPanel.retryLoadBtn}</span>
+                  </button>
+                </div>
+              ) : tab === 'overview' ? (
                 <div className="space-y-6">
                   {/* Environment Status Strip */}
                   <section className="space-y-2.5">

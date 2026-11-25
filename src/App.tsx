@@ -10,6 +10,7 @@ import {
   Megaphone,
   CheckCircle2,
   RefreshCw,
+  ShieldCheck,
 } from 'lucide-react';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import type {
@@ -37,6 +38,8 @@ import {
   uid,
 } from './utils/storage';
 import {
+  DEFAULT_ADMIN_EMAIL,
+  isPendingAdminEmailVerification,
   shouldUseCloudAi,
   type AnalyzerPreferenceMode,
 } from './utils/aiPolicy';
@@ -360,8 +363,18 @@ export default function App() {
     let active = true;
     const syncStatus = async () => {
       const idToken = currentUser ? await getFreshIdToken(currentUser) : null;
-      const status = await fetchServerAiStatus(idToken);
+      let status = await fetchServerAiStatus(idToken);
       if (!active) return;
+
+      if (currentUser && !status.isAdmin) {
+        const refreshedToken = await getFreshIdToken(currentUser, true);
+        if (refreshedToken && refreshedToken !== idToken) {
+          const retried = await fetchServerAiStatus(refreshedToken);
+          if (!active) return;
+          status = retried;
+        }
+      }
+
       setSharedAiEnabled(status.sharedAiEnabled);
       setGuestAiEnabled(status.guestAiEnabled);
       setReadOnlyMode(status.readOnlyMode);
@@ -375,8 +388,18 @@ export default function App() {
       if (status.minClientVersion) setMinClientVersion(status.minClientVersion);
     };
     void syncStatus();
+
+    const handleResumeSync = () => {
+      if (currentUser) {
+        void syncStatus();
+      }
+    };
+    window.addEventListener('focus', handleResumeSync);
+    window.addEventListener('online', handleResumeSync);
     return () => {
       active = false;
+      window.removeEventListener('focus', handleResumeSync);
+      window.removeEventListener('online', handleResumeSync);
     };
   }, [currentUser, authRevision]);
 
@@ -411,21 +434,28 @@ export default function App() {
       active = false;
       unsubGlobalAi?.();
     };
-  }, []);
+  }, [currentUser?.uid]);
 
   const effectiveIsAdmin = useMemo(() => {
     if (!currentUser) return false;
     if (isAdminUser(currentUser) || serverIsAdmin) return true;
     if (extraAdminUids.includes(currentUser.uid)) return true;
+    const normalizedEmail = currentUser.email?.trim().toLowerCase() || '';
     if (
       currentUser.emailVerified &&
-      currentUser.email &&
-      extraAdminEmails.includes(currentUser.email.trim().toLowerCase())
+      normalizedEmail &&
+      (normalizedEmail === DEFAULT_ADMIN_EMAIL.toLowerCase() ||
+        extraAdminEmails.includes(normalizedEmail))
     ) {
       return true;
     }
     return false;
   }, [currentUser, serverIsAdmin, extraAdminUids, extraAdminEmails]);
+
+  const adminEmailPendingVerify = useMemo(
+    () => isPendingAdminEmailVerification(currentUser, extraAdminEmails),
+    [currentUser, extraAdminEmails]
+  );
 
   useEffect(() => {
     if (!effectiveIsAdmin || adminUrlHandledRef.current || typeof window === 'undefined') return;
@@ -1941,6 +1971,18 @@ export default function App() {
                 {activePerson ? activePerson.name : t.sidebar.brand}
               </span>
               <div className="flex items-center gap-1 shrink-0">
+                {effectiveIsAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setAdminModalOpen(true)}
+                    aria-label={t.sidebar.openAdminAria}
+                    title={t.sidebar.openAdminTitle}
+                    className="w-8 h-8 rounded-md inline-flex items-center justify-center hover:bg-[var(--bg-hover)]"
+                    style={{ color: 'var(--success-text)' }}
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={handleToggleTheme}
@@ -2464,6 +2506,7 @@ export default function App() {
             pendingCount={pendingCount}
             isSyncing={isSyncing}
             isAdmin={effectiveIsAdmin}
+            adminEmailPendingVerify={adminEmailPendingVerify}
             onOpenAdminPanel={() => {
               setAccountOpen(false);
               setAdminModalOpen(true);

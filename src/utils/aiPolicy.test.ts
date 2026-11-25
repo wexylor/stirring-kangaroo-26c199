@@ -2,9 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ADMIN_UID,
+  DEFAULT_ADMIN_EMAIL,
   classifyGeminiError,
   getAiModelSpec,
   isAdminUid,
+  isPendingAdminEmailVerification,
   isVerifiedAdminIdentity,
   parseAdminList,
   parseGlobalAiConfig,
@@ -43,6 +45,21 @@ test('parseAdminList and isVerifiedAdminIdentity enforce verified email & multi-
   assert.equal(
     isVerifiedAdminIdentity({ uid: 'other', email: 'stranger@example.com', emailVerified: true }, policy),
     false
+  );
+
+  assert.equal(
+    isPendingAdminEmailVerification({ email: DEFAULT_ADMIN_EMAIL, emailVerified: false }),
+    true
+  );
+  assert.equal(
+    isPendingAdminEmailVerification({ email: DEFAULT_ADMIN_EMAIL, emailVerified: true }),
+    false
+  );
+  assert.equal(
+    isPendingAdminEmailVerification({ email: 'other@example.com', emailVerified: false }, [
+      'Other@example.com',
+    ]),
+    true
   );
 });
 

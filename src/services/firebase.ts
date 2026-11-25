@@ -366,10 +366,13 @@ export function isAdminUser(user: User | null): boolean {
   return Boolean(user && isAdminUid(user.uid, ADMIN_UID));
 }
 
-export async function getFreshIdToken(user: User | null): Promise<string | null> {
+export async function getFreshIdToken(
+  user: User | null,
+  forceRefresh = false
+): Promise<string | null> {
   if (!user) return null;
   try {
-    return await user.getIdToken();
+    return await user.getIdToken(forceRefresh);
   } catch {
     return null;
   }

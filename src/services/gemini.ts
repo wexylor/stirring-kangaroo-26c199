@@ -153,18 +153,52 @@ async function callAdminJson<T>(
 }
 
 export async function fetchServerAiStatus(idToken?: string | null): Promise<ServerAiStatus> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5000);
-  try {
-    const headers: Record<string, string> = {};
-    if (idToken) {
-      headers.Authorization = `Bearer ${idToken}`;
+  const attemptFetch = async (): Promise<ServerAiStatus> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
+    try {
+      const headers: Record<string, string> = {};
+      if (idToken) {
+        headers.Authorization = `Bearer ${idToken}`;
+      }
+      const res = await fetch('/api/ai/status', {
+        headers,
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP_${res.status}`);
+      }
+      const data = (await res.json()) as Partial<ServerAiStatus>;
+      return {
+        sharedAiEnabled:
+          typeof data.sharedAiEnabled === 'boolean' ? data.sharedAiEnabled : true,
+        guestAiEnabled:
+          typeof data.guestAiEnabled === 'boolean' ? data.guestAiEnabled : true,
+        readOnlyMode: Boolean(data.readOnlyMode),
+        serverKeyConfigured: Boolean(data.serverKeyConfigured),
+        isAdmin: Boolean(data.isAdmin),
+        keyRouteMode: data.keyRouteMode || 'auto',
+        aiModelPreset: data.aiModelPreset || 'balanced',
+        aiPromptStyle: data.aiPromptStyle,
+        uiDefaults: data.uiDefaults,
+        minClientVersion: data.minClientVersion,
+        serverStartedAtMs: data.serverStartedAtMs,
+        geminiModel: data.geminiModel,
+        announcement: data.announcement,
+        sampleTemplate: data.sampleTemplate,
+        poll: data.poll,
+      };
+    } finally {
+      clearTimeout(timer);
     }
-    const res = await fetch('/api/ai/status', {
-      headers,
-      signal: controller.signal,
-    });
-    if (!res.ok) {
+  };
+
+  try {
+    return await attemptFetch();
+  } catch {
+    try {
+      return await attemptFetch();
+    } catch {
       return {
         sharedAiEnabled: true,
         guestAiEnabled: true,
@@ -175,38 +209,6 @@ export async function fetchServerAiStatus(idToken?: string | null): Promise<Serv
         aiModelPreset: 'balanced',
       };
     }
-    const data = (await res.json()) as Partial<ServerAiStatus>;
-    return {
-      sharedAiEnabled:
-        typeof data.sharedAiEnabled === 'boolean' ? data.sharedAiEnabled : true,
-      guestAiEnabled:
-        typeof data.guestAiEnabled === 'boolean' ? data.guestAiEnabled : true,
-      readOnlyMode: Boolean(data.readOnlyMode),
-      serverKeyConfigured: Boolean(data.serverKeyConfigured),
-      isAdmin: Boolean(data.isAdmin),
-      keyRouteMode: data.keyRouteMode || 'auto',
-      aiModelPreset: data.aiModelPreset || 'balanced',
-      aiPromptStyle: data.aiPromptStyle,
-      uiDefaults: data.uiDefaults,
-      minClientVersion: data.minClientVersion,
-      serverStartedAtMs: data.serverStartedAtMs,
-      geminiModel: data.geminiModel,
-      announcement: data.announcement,
-      sampleTemplate: data.sampleTemplate,
-      poll: data.poll,
-    };
-  } catch {
-    return {
-      sharedAiEnabled: true,
-      guestAiEnabled: true,
-      readOnlyMode: false,
-      serverKeyConfigured: false,
-      isAdmin: false,
-      keyRouteMode: 'auto',
-      aiModelPreset: 'balanced',
-    };
-  } finally {
-    clearTimeout(timer);
   }
 }
 

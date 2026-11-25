@@ -14,6 +14,7 @@ import {
 } from './adminOps.ts';
 
 export const ADMIN_UID = 'wpjbyZa4sxgd08ONeEgK5MHBexS2';
+export const DEFAULT_ADMIN_EMAIL = 'arysergali@gmail.com';
 export const STORAGE_ANALYZER_MODE = 'smart_people_notebook_analyzer_mode';
 
 export type AnalyzerPreferenceMode = 'auto' | 'local';
@@ -144,6 +145,20 @@ export function isVerifiedAdminIdentity(
     return true;
   }
   return false;
+}
+
+export function isPendingAdminEmailVerification(
+  identity: { email?: string | null; emailVerified?: boolean } | null | undefined,
+  allowedEmails: string[] = []
+): boolean {
+  if (!identity || identity.emailVerified === true) return false;
+  const email = String(identity.email || '').trim().toLowerCase();
+  if (!email) return false;
+  const candidates = new Set([
+    DEFAULT_ADMIN_EMAIL.toLowerCase(),
+    ...allowedEmails.map((e) => e.trim().toLowerCase()).filter(Boolean),
+  ]);
+  return candidates.has(email);
 }
 
 export function isAdminUid(uid?: string | null, adminUid = ADMIN_UID): boolean {

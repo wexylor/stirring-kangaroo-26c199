@@ -449,7 +449,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Bottom utilities */}
       <div
-        className="p-3 border-t space-y-2 shrink-0"
+        className="p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t space-y-2 shrink-0"
         style={{ borderColor: 'var(--border-color)' }}
       >
         <PWAInstallButton variant="sidebar" />
@@ -610,7 +610,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <motion.aside
               variants={drawerLeftVariants}
               transition={DRAWER_TRANSITION}
-              className="relative z-10 w-[284px] max-w-[85vw] h-full border-r flex flex-col shadow-2xl overscroll-contain"
+              className="relative z-10 w-[284px] max-w-[85vw] h-dvh max-h-dvh border-r flex flex-col shadow-2xl overscroll-contain"
               style={{
                 backgroundColor: 'var(--bg-sidebar)',
                 borderColor: 'var(--border-color)',

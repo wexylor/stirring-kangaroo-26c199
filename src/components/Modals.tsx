@@ -191,6 +191,7 @@ interface AccountModalProps {
   onLogout: () => void;
   onRequestDeleteAccount?: () => void;
   isAdmin?: boolean;
+  adminEmailPendingVerify?: boolean;
   onOpenAdminPanel?: () => void;
   onSubmitFeedback?: (type: 'bug' | 'idea', text: string) => Promise<void>;
   myTickets?: UserFeedbackTicketSummary[];
@@ -210,6 +211,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   onLogout,
   onRequestDeleteAccount,
   isAdmin = false,
+  adminEmailPendingVerify = false,
   onOpenAdminPanel,
   onSubmitFeedback,
   myTickets = [],
@@ -661,6 +663,39 @@ export const AccountModal: React.FC<AccountModalProps> = ({
           >
             {t.account.openAdminPanelBtn}
           </button>
+        </div>
+      )}
+
+      {user && !isAdmin && adminEmailPendingVerify && (
+        <div
+          className="mt-4 p-3.5 rounded-lg border space-y-2"
+          style={{
+            backgroundColor: 'var(--warning-bg)',
+            borderColor: 'var(--warning-border)',
+          }}
+        >
+          <div className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--warning-text)' }}>
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>{t.account.adminVerifyEmailTitle}</span>
+          </div>
+          <p className="text-[11.5px] leading-relaxed" style={{ color: 'var(--text-primary)' }}>
+            {t.account.adminVerifyEmailDesc}
+          </p>
+          {onRefreshAccount && (
+            <button
+              type="button"
+              onClick={() => void runRefreshStatus(true)}
+              disabled={checkingStatus}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium hover:bg-[var(--bg-hover)] disabled:opacity-50"
+              style={{
+                backgroundColor: 'var(--bg-surface)',
+                borderColor: 'var(--border-color)',
+              }}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${checkingStatus ? 'animate-spin' : ''}`} />
+              <span>{t.account.checkStatusAria}</span>
+            </button>
+          )}
         </div>
       )}
 

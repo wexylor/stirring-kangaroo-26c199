@@ -299,6 +299,8 @@ export interface Translations {
     adminKeysCheckError: string;
     openAdminPanelBtn: string;
     openAdminPanelDesc: string;
+    adminVerifyEmailTitle: string;
+    adminVerifyEmailDesc: string;
     feedbackBtn: string;
     feedbackTitle: string;
     feedbackTypeBug: string;
@@ -332,6 +334,9 @@ export interface Translations {
     };
     refreshBtn: string;
     loadingText: string;
+    loadErrorTitle: string;
+    loadErrorDesc: string;
+    retryLoadBtn: string;
     envTitle: string;
     uptimeLabel: string;
     modelLabel: string;
@@ -974,6 +979,9 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       adminKeysCheckError: 'Не удалось выполнить проверку ключей',
       openAdminPanelBtn: 'Открыть админку',
       openAdminPanelDesc: 'Обзор, лимиты, баннеры, стартовый шаблон, вебхуки и входящие тикеты',
+      adminVerifyEmailTitle: 'Подтвердите Email для входа в админку',
+      adminVerifyEmailDesc:
+        'Почта совпадает со списком администраторов, но ещё не подтверждена в Firebase. Подтвердите письмо на почте и нажмите кнопку обновления статуса выше.',
       feedbackBtn: 'Сообщить о проблеме / Предложить идею',
       feedbackTitle: 'Обратная связь',
       feedbackTypeBug: 'Проблема',
@@ -1007,6 +1015,9 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       },
       refreshBtn: 'Обновить',
       loadingText: 'Загрузка телеметрии...',
+      loadErrorTitle: 'Не удалось загрузить данные админ-панели',
+      loadErrorDesc: 'Проверьте подключение к интернету и права администратора для текущего аккаунта.',
+      retryLoadBtn: 'Повторить загрузку',
       envTitle: 'Статус окружения',
       uptimeLabel: 'Аптайм сервера',
       modelLabel: 'Модель Gemini',
@@ -1676,6 +1687,9 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       adminKeysCheckError: 'Сервер кілттерін тексеру мүмкін болмады',
       openAdminPanelBtn: 'Әкімші панелін ашу',
       openAdminPanelDesc: 'Шолу, шектеулер, баннер, үлгі контакт, вебхуктер және тикеттер',
+      adminVerifyEmailTitle: 'Әкімші панелі үшін Email растаңыз',
+      adminVerifyEmailDesc:
+        'Бұл пошта әкімшілер тізімінде бар, бірақ Firebase-те әлі расталмаған. Поштадағы сілтемені растап, жоғарыдағы күйді жаңарту батырмасын басыңыз.',
       feedbackBtn: 'Мәселе хабарлау / Идея ұсыну',
       feedbackTitle: 'Кері байланыс',
       feedbackTypeBug: 'Мәселе',
@@ -1709,6 +1723,9 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       },
       refreshBtn: 'Жаңарту',
       loadingText: 'Телеметрия жүктелуде...',
+      loadErrorTitle: 'Әкімші панелінің деректерін жүктеу мүмкін болмады',
+      loadErrorDesc: 'Интернет байланысын және ағымдағы аккаунттың әкімші құқығын тексеріңіз.',
+      retryLoadBtn: 'Қайта жүктеу',
       envTitle: 'Орта күйі',
       uptimeLabel: 'Сервер аптаймы',
       modelLabel: 'Gemini моделі',
@@ -2376,6 +2393,9 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       adminKeysCheckError: 'Failed to check server keys',
       openAdminPanelBtn: 'Open Admin Console',
       openAdminPanelDesc: 'Telemetry, flags, banners, starter template, webhooks, and inbox',
+      adminVerifyEmailTitle: 'Verify email to unlock Admin Console',
+      adminVerifyEmailDesc:
+        'This email is on the admin allowlist, but is not verified in Firebase yet. Confirm the verification email and tap the refresh icon next to your email status above.',
       feedbackBtn: 'Report an issue / Suggest an idea',
       feedbackTitle: 'Feedback',
       feedbackTypeBug: 'Issue',
@@ -2409,6 +2429,9 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       },
       refreshBtn: 'Refresh',
       loadingText: 'Loading telemetry...',
+      loadErrorTitle: 'Could not load Admin Console',
+      loadErrorDesc: 'Check your connection and make sure this account has administrator access.',
+      retryLoadBtn: 'Retry loading',
       envTitle: 'Environment Status',
       uptimeLabel: 'Server Uptime',
       modelLabel: 'Gemini Model',

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { GoogleGenAI, ThinkingLevel, Type, type GenerateContentParameters } from '@google/genai';
 import {
   ADMIN_UID as DEFAULT_ADMIN_UID,
+  DEFAULT_ADMIN_EMAIL,
   classifyGeminiError,
   getAiModelSpec,
   isVerifiedAdminIdentity,
@@ -109,7 +110,6 @@ function resolveListenPort(): number {
 
 const PORT = resolveListenPort();
 const SERVER_STARTED_AT_MS = Date.now();
-const DEFAULT_ADMIN_EMAIL = 'arysergali@gmail.com';
 const ENV_ADMIN_UID_TOKENS = parseAdminList(process.env.ADMIN_UID);
 const ENV_ADMIN_EMAIL_TOKENS = parseAdminList(process.env.ADMIN_EMAIL);
 
@@ -821,7 +821,7 @@ async function verifyFirebaseIdToken(
 ): Promise<{ uid: string; email?: string; emailVerified: boolean } | null> {
   if (!idToken) return null;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5000);
+  const timer = setTimeout(() => controller.abort(), 10000);
   try {
     const res = await fetch(
       `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(
