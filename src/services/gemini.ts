@@ -4,12 +4,15 @@ import type { AnalysisResultPayload } from '../utils/semantics';
 import type { AiModelPreset, ServerAiStatus } from '../utils/aiPolicy';
 import type { AiKeyRouteMode, ServerKeyStatusSnapshot } from '../utils/aiKeyRouter';
 import type {
+  ActivityHeatmapStats,
   AdminSystemEvent,
+  AiPromptStyleConfig,
   AiTelemetryRecord,
   AlertWebhookTriggers,
   AnnouncementTone,
   DailyDigestSummary,
   EndpointAggregateStats,
+  ErrorBreakdownStats,
   FeatureEventKey,
   FeaturePoll,
   FeatureUsageCounters,
@@ -17,17 +20,32 @@ import type {
   GlobalAnnouncement,
   SafeWebhookStatus,
   SampleContactTemplate,
+  ServicesHealthSnapshot,
+  TicketTag,
+  UiDefaultsConfig,
+  UserFeedbackTicketSummary,
 } from '../utils/adminOps';
+import type { GreetingOccasion, GreetingTone } from '../utils/greetingGenerator';
 import { parseChatTranscript } from '../utils/chatParser';
 
 export interface AdminOverviewSnapshot {
   appVersion: string;
+  minClientVersion?: string;
   serverStartedAtMs: number;
   serverNowMs: number;
   geminiModel: string;
   rtdbStatus: {
     connected: boolean;
     latencyMs: number;
+  };
+  servicesHealth?: ServicesHealthSnapshot;
+  memoryUsage?: {
+    rssMb: number;
+    heapUsedMb: number;
+  };
+  cacheStats?: {
+    advisorCacheCount: number;
+    dossierCacheCount: number;
   };
   flags: {
     sharedAiEnabled: boolean;
@@ -36,6 +54,8 @@ export interface AdminOverviewSnapshot {
     keyRouteMode: AiKeyRouteMode;
     aiModelPreset: AiModelPreset;
   };
+  aiPromptStyle?: AiPromptStyleConfig;
+  uiDefaults?: UiDefaultsConfig;
   keyStatus: ServerKeyStatusSnapshot;
   telemetry: {
     totalRequests: number;
@@ -46,6 +66,8 @@ export interface AdminOverviewSnapshot {
     dossierRebuildCount: number;
     tokensSavedEstimate: number;
     endpointStats: EndpointAggregateStats[];
+    errorBreakdown?: ErrorBreakdownStats;
+    activityHeatmap?: ActivityHeatmapStats & { totalCount?: number };
     recentRequests: AiTelemetryRecord[];
     featureCounters: FeatureUsageCounters;
     dailyDigest: DailyDigestSummary;
@@ -53,6 +75,8 @@ export interface AdminOverviewSnapshot {
   announcement: GlobalAnnouncement;
   sampleTemplate: SampleContactTemplate;
   poll: FeaturePoll;
+  extraAdminUids?: string[];
+  extraAdminEmails?: string[];
   tickets: FeedbackTicket[];
   webhook: SafeWebhookStatus;
   events: AdminSystemEvent[];
@@ -128,17 +152,25 @@ async function callAdminJson<T>(
   return data;
 }
 
-export async function fetchServerAiStatus(): Promise<ServerAiStatus> {
+export async function fetchServerAiStatus(idToken?: string | null): Promise<ServerAiStatus> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
   try {
-    const res = await fetch('/api/ai/status', { signal: controller.signal });
+    const headers: Record<string, string> = {};
+    if (idToken) {
+      headers.Authorization = `Bearer ${idToken}`;
+    }
+    const res = await fetch('/api/ai/status', {
+      headers,
+      signal: controller.signal,
+    });
     if (!res.ok) {
       return {
         sharedAiEnabled: true,
         guestAiEnabled: true,
         readOnlyMode: false,
         serverKeyConfigured: false,
+        isAdmin: false,
         keyRouteMode: 'auto',
         aiModelPreset: 'balanced',
       };
@@ -151,8 +183,12 @@ export async function fetchServerAiStatus(): Promise<ServerAiStatus> {
         typeof data.guestAiEnabled === 'boolean' ? data.guestAiEnabled : true,
       readOnlyMode: Boolean(data.readOnlyMode),
       serverKeyConfigured: Boolean(data.serverKeyConfigured),
+      isAdmin: Boolean(data.isAdmin),
       keyRouteMode: data.keyRouteMode || 'auto',
       aiModelPreset: data.aiModelPreset || 'balanced',
+      aiPromptStyle: data.aiPromptStyle,
+      uiDefaults: data.uiDefaults,
+      minClientVersion: data.minClientVersion,
       serverStartedAtMs: data.serverStartedAtMs,
       geminiModel: data.geminiModel,
       announcement: data.announcement,
@@ -165,6 +201,7 @@ export async function fetchServerAiStatus(): Promise<ServerAiStatus> {
       guestAiEnabled: true,
       readOnlyMode: false,
       serverKeyConfigured: false,
+      isAdmin: false,
       keyRouteMode: 'auto',
       aiModelPreset: 'balanced',
     };
@@ -177,6 +214,22 @@ export async function fetchAdminOverview(idToken: string): Promise<AdminOverview
   return callAdminJson<AdminOverviewSnapshot>('/api/admin/overview', idToken, 'GET');
 }
 
+export async function probeAdminServicesHealth(idToken: string): Promise<{
+  servicesHealth: ServicesHealthSnapshot;
+  memoryUsage: { rssMb: number; heapUsedMb: number };
+  cacheStats: { advisorCacheCount: number; dossierCacheCount: number };
+}> {
+  return callAdminJson('/api/admin/health-probe', idToken, 'GET');
+}
+
+export async function clearAdminAiCache(idToken: string): Promise<{
+  clearedAdvisor: number;
+  clearedDossier: number;
+  cacheStats: { advisorCacheCount: number; dossierCacheCount: number };
+}> {
+  return callAdminJson('/api/admin/cache/clear', idToken, 'POST');
+}
+
 export async function updateAdminFlags(
   idToken: string,
   flags: {
@@ -184,6 +237,8 @@ export async function updateAdminFlags(
     guestAiEnabled?: boolean;
     readOnlyMode?: boolean;
     aiModelPreset?: AiModelPreset;
+    aiPromptStyle?: AiPromptStyleConfig;
+    minClientVersion?: string;
   }
 ): Promise<{
   geminiModel: string;
@@ -193,9 +248,29 @@ export async function updateAdminFlags(
     readOnlyMode: boolean;
     aiModelPreset: AiModelPreset;
   };
+  aiPromptStyle?: AiPromptStyleConfig;
+  minClientVersion?: string;
   rtdbSynced: boolean;
 }> {
   return callAdminJson('/api/admin/flags', idToken, 'POST', flags);
+}
+
+export async function updateAdminUiDefaults(
+  idToken: string,
+  payload: UiDefaultsConfig | { reset: true }
+): Promise<{ uiDefaults: UiDefaultsConfig; rtdbSynced: boolean }> {
+  return callAdminJson('/api/admin/ui-defaults', idToken, 'POST', payload);
+}
+
+export async function updateAdminAccess(
+  idToken: string,
+  payload: { extraAdminUids: string[]; extraAdminEmails: string[] }
+): Promise<{
+  extraAdminUids: string[];
+  extraAdminEmails: string[];
+  rtdbSynced: boolean;
+}> {
+  return callAdminJson('/api/admin/access', idToken, 'POST', payload);
 }
 
 export async function updateAdminAnnouncement(
@@ -228,8 +303,9 @@ export async function updateAdminTicket(
   idToken: string,
   payload: {
     id: string;
-    action: 'resolve' | 'reopen' | 'delete';
+    action: 'update' | 'resolve' | 'reopen' | 'delete';
     reply?: string;
+    tags?: TicketTag[];
     publishToBanner?: boolean;
   }
 ): Promise<{ tickets: FeedbackTicket[]; announcement?: GlobalAnnouncement }> {
@@ -242,9 +318,44 @@ export async function updateAdminWebhook(
     webhookUrl?: string;
     clearUrl?: boolean;
     triggers?: Partial<AlertWebhookTriggers>;
+    dailyDigestHourUtc?: number;
   }
 ): Promise<{ webhook: SafeWebhookStatus }> {
   return callAdminJson('/api/admin/webhook', idToken, 'POST', payload);
+}
+
+export async function exportAdminTelemetryFile(
+  idToken: string,
+  format: 'csv' | 'json'
+): Promise<void> {
+  const res = await fetch(`/api/admin/export?format=${format}`, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+  if (!res.ok) {
+    throw new Error(`HTTP_${res.status}`);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `notebook-telemetry-${new Date().toISOString().slice(0, 10)}.${format}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export async function exportAdminConfigBundle(
+  idToken: string
+): Promise<{ bundle: Record<string, unknown> }> {
+  return callAdminJson('/api/admin/config-export', idToken, 'GET');
+}
+
+export async function importAdminConfigBundle(
+  idToken: string,
+  bundle: unknown
+): Promise<{ rtdbSynced: boolean }> {
+  return callAdminJson('/api/admin/config-import', idToken, 'POST', { bundle });
 }
 
 export async function testAdminWebhook(
@@ -294,7 +405,7 @@ export async function submitUserFeedback(
     appVersion: string;
   },
   idToken?: string | null
-): Promise<{ ticketId: string }> {
+): Promise<{ ticketId: string; ticket?: UserFeedbackTicketSummary }> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (idToken) headers.Authorization = `Bearer ${idToken}`;
   const res = await fetch('/api/feedback', {
@@ -302,11 +413,35 @@ export async function submitUserFeedback(
     headers,
     body: JSON.stringify(payload),
   });
-  const data = (await res.json().catch(() => null)) as { ok?: boolean; ticketId?: string; error?: string } | null;
+  const data = (await res.json().catch(() => null)) as {
+    ok?: boolean;
+    ticketId?: string;
+    ticket?: UserFeedbackTicketSummary;
+    error?: string;
+  } | null;
   if (!res.ok || !data?.ok || !data.ticketId) {
     throw new Error(data?.error || `HTTP_${res.status}`);
   }
-  return { ticketId: data.ticketId };
+  return { ticketId: data.ticketId, ticket: data.ticket };
+}
+
+export async function fetchMyFeedbackTickets(
+  idToken?: string | null,
+  guestTicketIds: string[] = []
+): Promise<UserFeedbackTicketSummary[]> {
+  const headers: Record<string, string> = {};
+  if (idToken) headers.Authorization = `Bearer ${idToken}`;
+  const qs =
+    guestTicketIds.length > 0
+      ? `?ids=${encodeURIComponent(guestTicketIds.slice(0, 30).join(','))}`
+      : '';
+  const res = await fetch(`/api/feedback/my${qs}`, { headers });
+  if (!res.ok) return [];
+  const data = (await res.json().catch(() => null)) as {
+    ok?: boolean;
+    tickets?: UserFeedbackTicketSummary[];
+  } | null;
+  return Array.isArray(data?.tickets) ? data.tickets : [];
 }
 
 export async function submitPollVote(payload: {
@@ -513,4 +648,28 @@ export async function buildDossierWithGemini(
     20000,
     idToken
   );
+}
+
+export async function generateGreetingWithGemini(
+  person: Person,
+  occasion: GreetingOccasion,
+  tone: GreetingTone,
+  lang: AppLang = 'ru',
+  idToken?: string | null
+): Promise<string> {
+  const serialized = {
+    name: person.name,
+    subtitle: person.subtitle,
+    columns: person.columns.map((c) => ({
+      category: c.title,
+      facts: c.facts.map((f) => f.text),
+    })),
+  };
+  const res = await callServerAi<{ message: string }>(
+    '/api/ai/greeting',
+    { person: serialized, occasion, tone, lang },
+    16000,
+    idToken
+  );
+  return String(res.message || '').trim();
 }

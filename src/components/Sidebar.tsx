@@ -12,6 +12,7 @@ import {
   Plus,
   User as UserIcon,
   BookUser,
+  ShieldCheck,
 } from 'lucide-react';
 import type { CloudSyncStatus, Person, UpcomingDateReminder } from '../types/notebook';
 import { getAvatarGradient, DEFAULT_GROUPS } from '../data/sampleData';
@@ -67,6 +68,9 @@ interface SidebarProps {
   onImportJsonFile: (file: File) => void;
   onManualSync: () => void;
   onExportReminderCalendar?: (reminder: UpcomingDateReminder) => void;
+  defaultGroups?: string[];
+  isAdmin?: boolean;
+  onOpenAdminPanel?: () => void;
 }
 
 function countPersonMatches(person: Person, query: string): number {
@@ -113,6 +117,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onImportJsonFile,
   onManualSync,
   onExportReminderCalendar,
+  defaultGroups,
+  isAdmin = false,
+  onOpenAdminPanel,
 }) => {
   const { lang, t } = useI18n();
   useLiveMinute();
@@ -140,14 +147,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
     };
   }, [mobileOpen, onCloseMobile]);
 
+  const baseGroups =
+    defaultGroups && defaultGroups.length > 0 ? defaultGroups : DEFAULT_GROUPS;
   const customGroups = Array.from(
     new Set(
       people
         .map((p) => (p.group || '').trim())
-        .filter((g) => g && !DEFAULT_GROUPS.includes(g))
+        .filter((g) => g && !baseGroups.includes(g))
     )
   );
-  const groupTabs = ['Все', ...DEFAULT_GROUPS, ...customGroups];
+  const groupTabs = ['Все', ...baseGroups, ...customGroups];
 
   const sortedPeople = [...people].sort((a, b) => {
     if (Boolean(a.isPinned) !== Boolean(b.isPinned)) {
@@ -325,7 +334,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   grp === 'Все'
                     ? people.length
                     : people.filter((p) => (p.group || '').trim() === grp).length;
-                if (grp !== 'Все' && count === 0 && !DEFAULT_GROUPS.includes(grp)) return null;
+                if (grp !== 'Все' && count === 0 && !baseGroups.includes(grp)) return null;
                 return (
                   <button
                     key={grp}
@@ -505,7 +514,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".json,application/json"
+            accept=".json,.vcf,application/json,text/vcard,text/x-vcard"
             hidden
             onChange={(e) => {
               const file = e.target.files?.[0];
@@ -527,6 +536,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
           >
             <Settings className="w-3.5 h-3.5" />
           </button>
+
+          {isAdmin && onOpenAdminPanel && (
+            <button
+              type="button"
+              onClick={() => {
+                onOpenAdminPanel();
+                onCloseMobile();
+              }}
+              aria-label={t.sidebar.openAdminAria}
+              title={t.sidebar.openAdminTitle}
+              className="w-7 h-7 rounded-md inline-flex items-center justify-center hover:bg-[var(--bg-hover)] transition-colors shrink-0"
+              style={{ color: 'var(--success-text)' }}
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+            </button>
+          )}
 
           <button
             type="button"

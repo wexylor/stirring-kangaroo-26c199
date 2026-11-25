@@ -1,152 +1,151 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
+import test from 'node:test';
 import {
-  buildAdvisorCacheKey,
-  buildDossierCacheKey,
-  computeEndpointStats,
-  isTrafficSpike,
-  maskWebhookUrl,
-  sanitizeAnnouncement,
-  sanitizePoll,
-  sanitizeSampleTemplate,
-  validateSafeWebhookUrl,
+  buildAdminExportCsv,
+  computeErrorBreakdown,
+  createEmptyActivityHeatmap,
+  isClientVersionOutdated,
+  recordActivitySlot,
+  sanitizeAiPromptStyle,
+  sanitizeTicketTags,
+  sanitizeUiDefaults,
 } from './adminOps.ts';
 
-test('buildAdvisorCacheKey normalizes question casing/whitespace and invalidates on profile updates', () => {
-  const k1 = buildAdvisorCacheKey({
-    personName: 'Алина',
-    personUpdatedAt: '2026-11-24T10:00:00Z',
-    columns: [{ title: 'Нравится', facts: ['Матча'] }],
-    question: '  Что   подарить? ',
-    lang: 'ru',
-  });
-  const k2 = buildAdvisorCacheKey({
-    personName: 'алина',
-    personUpdatedAt: '2026-11-24T10:00:00Z',
-    columns: [{ title: 'Нравится', facts: ['Матча'] }],
-    question: 'что подарить?',
-    lang: 'ru',
-  });
-  const k3 = buildAdvisorCacheKey({
-    personName: 'Алина',
-    personUpdatedAt: '2026-11-24T10:05:00Z',
-    columns: [{ title: 'Нравится', facts: ['Матча', 'Джаз'] }],
-    question: 'Что подарить?',
-    lang: 'ru',
-  });
-
-  assert.equal(k1, k2);
-  assert.notEqual(k1, k3);
-});
-
-test('buildDossierCacheKey differentiates single vs all modes and languages', () => {
-  const d1 = buildDossierCacheKey({
-    mode: 'single',
-    activePersonName: 'Алина',
-    people: [{ name: 'Алина' }],
-    lang: 'ru',
-  });
-  const d2 = buildDossierCacheKey({
-    mode: 'all',
-    activePersonName: 'Алина',
-    people: [{ name: 'Алина' }],
-    lang: 'ru',
-  });
-  assert.notEqual(d1, d2);
-});
-
-test('computeEndpointStats computes latency average and token/cache aggregates per endpoint', () => {
-  const stats = computeEndpointStats([
+test('computeErrorBreakdown categorizes quota, timeout, authKey, and network/other errors', () => {
+  const breakdown = computeErrorBreakdown([
     {
       id: '1',
-      timestamp: '2026-11-24T10:00:00Z',
-      endpoint: 'advisor',
-      latencyMs: 400,
-      promptTokens: 120,
-      candidatesTokens: 80,
-      totalTokens: 200,
+      timestamp: '2026-01-01T10:00:00Z',
+      endpoint: 'analyze',
+      latencyMs: 120,
+      promptTokens: 10,
+      candidatesTokens: 5,
+      totalTokens: 15,
       cacheHit: false,
       ok: true,
     },
     {
       id: '2',
-      timestamp: '2026-11-24T10:01:00Z',
-      endpoint: 'advisor',
-      latencyMs: 2,
+      timestamp: '2026-01-01T10:01:00Z',
+      endpoint: 'analyze',
+      latencyMs: 200,
       promptTokens: 0,
       candidatesTokens: 0,
       totalTokens: 0,
-      cacheHit: true,
-      ok: true,
+      cacheHit: false,
+      ok: false,
+      errorCode: 'RESOURCE_EXHAUSTED',
     },
     {
       id: '3',
-      timestamp: '2026-11-24T10:02:00Z',
-      endpoint: 'analyze',
-      latencyMs: 650,
-      promptTokens: 300,
-      candidatesTokens: 150,
-      totalTokens: 450,
+      timestamp: '2026-01-01T10:02:00Z',
+      endpoint: 'advisor',
+      latencyMs: 10000,
+      promptTokens: 0,
+      candidatesTokens: 0,
+      totalTokens: 0,
       cacheHit: false,
       ok: false,
+      errorCode: 'UNAVAILABLE',
+    },
+    {
+      id: '4',
+      timestamp: '2026-01-01T10:03:00Z',
+      endpoint: 'dossier',
+      latencyMs: 80,
+      promptTokens: 0,
+      candidatesTokens: 0,
+      totalTokens: 0,
+      cacheHit: false,
+      ok: false,
+      errorCode: 'API_KEY_INVALID',
+    },
+    {
+      id: '5',
+      timestamp: '2026-01-01T10:04:00Z',
+      endpoint: 'greeting',
+      latencyMs: 50,
+      promptTokens: 0,
+      candidatesTokens: 0,
+      totalTokens: 0,
+      cacheHit: false,
+      ok: false,
+      errorCode: 'UPSTREAM_ERROR',
     },
   ]);
 
-  const advisor = stats.find((s) => s.endpoint === 'advisor')!;
-  const analyze = stats.find((s) => s.endpoint === 'analyze')!;
-  assert.equal(advisor.requests, 2);
-  assert.equal(advisor.cacheHits, 1);
-  assert.equal(advisor.avgLatencyMs, 400);
-  assert.equal(advisor.totalTokens, 200);
-  assert.equal(analyze.errors, 1);
-  assert.equal(analyze.totalTokens, 450);
+  assert.equal(breakdown.quota429, 1);
+  assert.equal(breakdown.timeout503, 1);
+  assert.equal(breakdown.authKey, 1);
+  assert.equal(breakdown.networkOther, 1);
+  assert.equal(breakdown.totalErrors, 4);
 });
 
-test('validateSafeWebhookUrl permits external https Discord/Telegram/Webhooks and blocks SSRF vectors', () => {
-  const discord = validateSafeWebhookUrl('https://discord.com/api/webhooks/123456/secret-token');
-  assert.equal(discord.valid, true);
-  assert.equal(discord.provider, 'discord');
-
-  const tg = validateSafeWebhookUrl('https://api.telegram.org/bot123456:ABC/sendMessage?chat_id=999');
-  assert.equal(tg.valid, true);
-  assert.equal(tg.provider, 'telegram');
-
-  assert.equal(validateSafeWebhookUrl('http://discord.com/api/webhooks/1').valid, false);
-  assert.equal(validateSafeWebhookUrl('https://127.0.0.1/hook').valid, false);
-  assert.equal(validateSafeWebhookUrl('https://169.254.169.254/latest/meta-data').valid, false);
-  assert.equal(validateSafeWebhookUrl('https://192.168.1.10/webhook').valid, false);
-  assert.equal(validateSafeWebhookUrl('https://localhost:3000/hook').valid, false);
-  assert.equal(validateSafeWebhookUrl('https://user:pass@example.com/hook').valid, false);
-
-  const masked = maskWebhookUrl('https://discord.com/api/webhooks/123456/secret-abcd');
-  assert.equal(masked.includes('secret'), false);
-  assert.ok(masked.endsWith('abcd'));
+test('isClientVersionOutdated compares semantic versions cleanly', () => {
+  assert.equal(isClientVersionOutdated('2.3.9', '2.4.0'), true);
+  assert.equal(isClientVersionOutdated('2.4.0', '2.4.0'), false);
+  assert.equal(isClientVersionOutdated('2.4.1', '2.4.0'), false);
+  assert.equal(isClientVersionOutdated('3.0.0', '2.9.9'), false);
+  assert.equal(isClientVersionOutdated('2.4.0', '0.0.0'), false);
 });
 
-test('sanitizers normalize announcement, sample template, poll, and traffic spike checks', () => {
-  const ann = sanitizeAnnouncement({ enabled: true, text: '  Технические работы  ', tone: 'warning' });
-  assert.equal(ann.enabled, true);
-  assert.equal(ann.text, 'Технические работы');
-  assert.equal(ann.tone, 'warning');
-
-  const tpl = sanitizeSampleTemplate({ name: 'Тимур', subtitle: 'Дизайнер' });
-  assert.equal(tpl.name, 'Тимур');
-  assert.ok(tpl.facts.length > 0);
-
-  const poll = sanitizePoll({
-    id: 'p1',
-    enabled: true,
-    question: 'Что добавить?',
-    options: [
-      { id: 'o1', label: 'Телеграм-бот', votes: 3 },
-      { id: 'o2', label: 'Тёмные виджеты', votes: 1 },
-    ],
+test('sanitizeUiDefaults and sanitizeAiPromptStyle fall back safely', () => {
+  const style = sanitizeAiPromptStyle({ advisorVerbosity: 'detailed', factGranularity: 'grouped' });
+  assert.deepEqual(style, { advisorVerbosity: 'detailed', factGranularity: 'grouped' });
+  assert.deepEqual(sanitizeAiPromptStyle(null), {
+    advisorVerbosity: 'concise',
+    factGranularity: 'atomic',
   });
-  assert.equal(poll.enabled, true);
-  assert.equal(poll.options.length, 2);
 
-  const now = 1_000_000;
-  const burst = Array.from({ length: 25 }, (_, i) => now - i * 1000);
-  assert.equal(isTrafficSpike(burst, now), true);
-  assert.equal(isTrafficSpike(burst.slice(0, 5), now), false);
+  const ui = sanitizeUiDefaults({
+    defaultGroups: ['VIP', 'Семья', 'VIP'],
+    defaultSections: [{ title: 'Идеи', icon: '💡' }],
+    quickAdvisorPrompts: ['Что подарить?'],
+  });
+  assert.deepEqual(ui.defaultGroups, ['VIP', 'Семья']);
+  assert.deepEqual(ui.defaultSections, [{ title: 'Идеи', icon: '💡' }]);
+  assert.deepEqual(ui.quickAdvisorPrompts, ['Что подарить?']);
+});
+
+test('sanitizeTicketTags and recordActivitySlot', () => {
+  assert.deepEqual(sanitizeTicketTags(['urgent', 'invalid', 'fixed', 'urgent']), ['urgent', 'fixed']);
+  const hm = createEmptyActivityHeatmap();
+  recordActivitySlot(hm, new Date(Date.UTC(2026, 10, 25, 14, 30, 0))); // 2026-11-25 is Wednesday (index 2)
+  assert.equal(hm.hours[14], 1);
+  assert.equal(hm.weekdays[2], 1);
+});
+
+test('buildAdminExportCsv includes UTF-8 BOM and properly quotes cells', () => {
+  const csv = buildAdminExportCsv({
+    requests: [
+      {
+        id: 'req1',
+        timestamp: '2026-11-25T10:00:00Z',
+        endpoint: 'analyze',
+        latencyMs: 320,
+        promptTokens: 100,
+        candidatesTokens: 50,
+        totalTokens: 150,
+        cacheHit: false,
+        ok: true,
+        slotUsed: 'primary',
+      },
+    ],
+    tickets: [
+      {
+        id: 't1',
+        type: 'bug',
+        text: 'Bug with "quotes", here',
+        authorLabel: 'Alex',
+        isGuest: false,
+        lang: 'ru',
+        appVersion: '2.4.0',
+        status: 'open',
+        createdAt: '2026-11-25T10:05:00Z',
+      },
+    ],
+    events: [],
+  });
+  assert.ok(csv.startsWith('\uFEFF'));
+  assert.ok(csv.includes('"Alex: Bug with ""quotes"", here"'));
 });

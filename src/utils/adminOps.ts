@@ -47,7 +47,7 @@ export type FeatureEventKey =
 
 export type FeatureUsageCounters = Record<FeatureEventKey, number>;
 
-export type AiEndpointName = 'analyze' | 'advisor' | 'dossier';
+export type AiEndpointName = 'analyze' | 'advisor' | 'dossier' | 'greeting';
 
 export interface AiTelemetryRecord {
   id: string;
@@ -74,18 +74,75 @@ export interface EndpointAggregateStats {
   errors: number;
 }
 
+export type TicketTag = 'urgent' | 'in_progress' | 'fixed';
+
 export interface FeedbackTicket {
   id: string;
   type: 'bug' | 'idea';
   text: string;
   authorLabel: string;
+  authorUid?: string;
   isGuest: boolean;
   lang: string;
   appVersion: string;
   status: 'open' | 'resolved';
+  tags?: TicketTag[];
   createdAt: string;
   resolvedAt?: string;
   adminReply?: string;
+}
+
+export interface UserFeedbackTicketSummary {
+  id: string;
+  type: 'bug' | 'idea';
+  text: string;
+  status: 'open' | 'resolved';
+  tags?: TicketTag[];
+  createdAt: string;
+  resolvedAt?: string;
+  adminReply?: string;
+}
+
+export interface AiPromptStyleConfig {
+  advisorVerbosity: 'concise' | 'detailed';
+  factGranularity: 'atomic' | 'grouped';
+}
+
+export interface UiDefaultSection {
+  title: string;
+  icon: string;
+}
+
+export interface UiDefaultsConfig {
+  defaultGroups: string[];
+  defaultSections: UiDefaultSection[];
+  quickAdvisorPrompts: string[];
+}
+
+export interface ErrorBreakdownStats {
+  quota429: number;
+  timeout503: number;
+  authKey: number;
+  networkOther: number;
+  totalErrors: number;
+}
+
+export interface ActivityHeatmapStats {
+  hours: number[];
+  weekdays: number[];
+}
+
+export interface ServiceProbeEntry {
+  ok: boolean;
+  latencyMs: number;
+  detail?: string;
+}
+
+export interface ServicesHealthSnapshot {
+  checkedAt: string;
+  rtdb: ServiceProbeEntry;
+  googleAuth: ServiceProbeEntry;
+  gemini: ServiceProbeEntry;
 }
 
 export interface AlertWebhookTriggers {
@@ -102,6 +159,8 @@ export interface SafeWebhookStatus {
   provider?: 'telegram' | 'discord' | 'webhook';
   maskedTarget?: string;
   triggers: AlertWebhookTriggers;
+  dailyDigestHourUtc?: number;
+  lastAutoDigestDateKey?: string;
   lastSentAt?: string;
   lastError?: string;
 }
@@ -295,7 +354,7 @@ export function buildDossierCacheKey(params: {
 export function computeEndpointStats(
   records: AiTelemetryRecord[]
 ): EndpointAggregateStats[] {
-  const endpoints: AiEndpointName[] = ['analyze', 'advisor', 'dossier'];
+  const endpoints: AiEndpointName[] = ['analyze', 'advisor', 'dossier', 'greeting'];
   return endpoints.map((ep) => {
     const subset = records.filter((r) => r.endpoint === ep);
     const nonCache = subset.filter((r) => !r.cacheHit);
@@ -431,3 +490,239 @@ export function isTrafficSpike(
   }
   return count >= threshold;
 }
+
+export const DEFAULT_AI_PROMPT_STYLE: AiPromptStyleConfig = {
+  advisorVerbosity: 'concise',
+  factGranularity: 'atomic',
+};
+
+export function sanitizeAiPromptStyle(raw: unknown): AiPromptStyleConfig {
+  if (!raw || typeof raw !== 'object') {
+    return { ...DEFAULT_AI_PROMPT_STYLE };
+  }
+  const obj = raw as { advisorVerbosity?: unknown; factGranularity?: unknown };
+  return {
+    advisorVerbosity: obj.advisorVerbosity === 'detailed' ? 'detailed' : 'concise',
+    factGranularity: obj.factGranularity === 'grouped' ? 'grouped' : 'atomic',
+  };
+}
+
+export function createDefaultUiDefaults(): UiDefaultsConfig {
+  return {
+    defaultGroups: ['Семья', 'Друзья', 'Работа', 'Университет'],
+    defaultSections: [
+      { title: 'Нравится', icon: '❤️' },
+      { title: 'Не нравится', icon: '👎' },
+      { title: 'Увлечения', icon: '🎯' },
+    ],
+    quickAdvisorPrompts: [
+      'Что подарить?',
+      'Куда позвать на встречу?',
+      'О чём поговорить при встрече?',
+      'Какие есть табу и аллергии?',
+    ],
+  };
+}
+
+export function sanitizeUiDefaults(raw: unknown): UiDefaultsConfig {
+  const def = createDefaultUiDefaults();
+  if (!raw || typeof raw !== 'object') return def;
+  const obj = raw as {
+    defaultGroups?: unknown;
+    defaultSections?: unknown;
+    quickAdvisorPrompts?: unknown;
+  };
+
+  const groups = Array.isArray(obj.defaultGroups)
+    ? Array.from(
+        new Set(
+          obj.defaultGroups
+            .map((g) => String(g || '').trim().slice(0, 32))
+            .filter(Boolean)
+        )
+      ).slice(0, 10)
+    : def.defaultGroups;
+
+  const rawSections = Array.isArray(obj.defaultSections) ? obj.defaultSections : def.defaultSections;
+  const sections: UiDefaultSection[] = rawSections
+    .filter((s): s is Record<string, unknown> => Boolean(s && typeof s === 'object'))
+    .map((s) => ({
+      title: String(s.title || '').trim().slice(0, 36),
+      icon: String(s.icon || '📌').trim().slice(0, 4) || '📌',
+    }))
+    .filter((s) => s.title.length > 0)
+    .slice(0, 12);
+
+  const prompts = Array.isArray(obj.quickAdvisorPrompts)
+    ? Array.from(
+        new Set(
+          obj.quickAdvisorPrompts
+            .map((q) => String(q || '').trim().slice(0, 90))
+            .filter(Boolean)
+        )
+      ).slice(0, 8)
+    : def.quickAdvisorPrompts;
+
+  return {
+    defaultGroups: groups.length > 0 ? groups : def.defaultGroups,
+    defaultSections: sections.length > 0 ? sections : def.defaultSections,
+    quickAdvisorPrompts: prompts.length > 0 ? prompts : def.quickAdvisorPrompts,
+  };
+}
+
+export function sanitizeTicketTags(raw: unknown): TicketTag[] {
+  if (!Array.isArray(raw)) return [];
+  const allowed = new Set<TicketTag>(['urgent', 'in_progress', 'fixed']);
+  const out: TicketTag[] = [];
+  for (const item of raw) {
+    if (typeof item === 'string' && allowed.has(item as TicketTag) && !out.includes(item as TicketTag)) {
+      out.push(item as TicketTag);
+    }
+  }
+  return out;
+}
+
+export function computeErrorBreakdown(records: AiTelemetryRecord[]): ErrorBreakdownStats {
+  const stats: ErrorBreakdownStats = {
+    quota429: 0,
+    timeout503: 0,
+    authKey: 0,
+    networkOther: 0,
+    totalErrors: 0,
+  };
+  for (const rec of records) {
+    if (rec.ok) continue;
+    stats.totalErrors++;
+    const code = String(rec.errorCode || '').toUpperCase();
+    if (code.includes('RESOURCE_EXHAUSTED') || code.includes('429')) {
+      stats.quota429++;
+    } else if (code.includes('UNAVAILABLE') || code.includes('TIMEOUT') || code.includes('503')) {
+      stats.timeout503++;
+    } else if (
+      code.includes('API_KEY') ||
+      code.includes('PERMISSION_DENIED') ||
+      code.includes('NO_API_KEY')
+    ) {
+      stats.authKey++;
+    } else {
+      stats.networkOther++;
+    }
+  }
+  return stats;
+}
+
+export function createEmptyActivityHeatmap(): ActivityHeatmapStats {
+  return {
+    hours: Array.from({ length: 24 }, () => 0),
+    weekdays: Array.from({ length: 7 }, () => 0),
+  };
+}
+
+export function recordActivitySlot(
+  heatmap: ActivityHeatmapStats,
+  date: Date = new Date()
+): ActivityHeatmapStats {
+  const hour = date.getUTCHours();
+  // Monday=0 ... Sunday=6
+  const jsDay = date.getUTCDay();
+  const weekdayIdx = jsDay === 0 ? 6 : jsDay - 1;
+  if (hour >= 0 && hour < 24 && Array.isArray(heatmap.hours) && heatmap.hours.length === 24) {
+    heatmap.hours[hour] = (heatmap.hours[hour] || 0) + 1;
+  }
+  if (
+    weekdayIdx >= 0 &&
+    weekdayIdx < 7 &&
+    Array.isArray(heatmap.weekdays) &&
+    heatmap.weekdays.length === 7
+  ) {
+    heatmap.weekdays[weekdayIdx] = (heatmap.weekdays[weekdayIdx] || 0) + 1;
+  }
+  return heatmap;
+}
+
+export function sanitizeVersionString(raw: unknown, fallback: string = APP_VERSION): string {
+  const cleaned = String(raw || '').trim().replace(/^v/i, '');
+  const match = cleaned.match(/^(\d+)\.(\d+)(?:\.(\d+))?/);
+  if (!match) return fallback;
+  return `${Number(match[1])}.${Number(match[2])}.${Number(match[3] || 0)}`;
+}
+
+export function isClientVersionOutdated(currentVersion: string, minVersion: string): boolean {
+  const parseParts = (v: string): [number, number, number] => {
+    const clean = String(v || '').trim().replace(/^v/i, '');
+    const m = clean.match(/^(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+    if (!m) return [0, 0, 0];
+    return [Number(m[1] || 0), Number(m[2] || 0), Number(m[3] || 0)];
+  };
+  const [c1, c2, c3] = parseParts(currentVersion);
+  const [m1, m2, m3] = parseParts(minVersion);
+  if (m1 === 0 && m2 === 0 && m3 === 0) return false;
+  if (c1 !== m1) return c1 < m1;
+  if (c2 !== m2) return c2 < m2;
+  return c3 < m3;
+}
+
+function escapeCsvCell(raw: unknown): string {
+  const str = String(raw ?? '');
+  if (/[",\r\n]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+export function buildAdminExportCsv(params: {
+  requests: AiTelemetryRecord[];
+  tickets: FeedbackTicket[];
+  events: AdminSystemEvent[];
+}): string {
+  const rows: string[] = [
+    ['category', 'id', 'timestamp', 'type_or_endpoint', 'status', 'latency_ms', 'tokens', 'details']
+      .map(escapeCsvCell)
+      .join(','),
+  ];
+
+  for (const r of params.requests || []) {
+    rows.push(
+      [
+        'ai_request',
+        r.id,
+        r.timestamp,
+        r.endpoint,
+        r.ok ? (r.cacheHit ? 'CACHE_HIT' : 'OK') : r.errorCode || 'ERROR',
+        r.latencyMs,
+        r.totalTokens,
+        r.slotUsed || '',
+      ]
+        .map(escapeCsvCell)
+        .join(',')
+    );
+  }
+
+  for (const tk of params.tickets || []) {
+    rows.push(
+      [
+        'ticket',
+        tk.id,
+        tk.createdAt,
+        tk.type,
+        tk.status,
+        '',
+        '',
+        `${tk.authorLabel}: ${tk.text}${tk.adminReply ? ` | Reply: ${tk.adminReply}` : ''}`,
+      ]
+        .map(escapeCsvCell)
+        .join(',')
+    );
+  }
+
+  for (const ev of params.events || []) {
+    rows.push(
+      ['system_event', ev.id, ev.timestamp, ev.level, ev.level, '', '', ev.message]
+        .map(escapeCsvCell)
+        .join(',')
+    );
+  }
+
+  return '\uFEFF' + rows.join('\r\n');
+}
+

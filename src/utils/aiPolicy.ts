@@ -1,11 +1,16 @@
 import { resolveAiKeyRouteMode, type AiKeyRouteMode } from './aiKeyRouter.ts';
 import {
+  sanitizeAiPromptStyle,
   sanitizeAnnouncement,
   sanitizePoll,
   sanitizeSampleTemplate,
+  sanitizeUiDefaults,
+  sanitizeVersionString,
+  type AiPromptStyleConfig,
   type FeaturePoll,
   type GlobalAnnouncement,
   type SampleContactTemplate,
+  type UiDefaultsConfig,
 } from './adminOps.ts';
 
 export const ADMIN_UID = 'wpjbyZa4sxgd08ONeEgK5MHBexS2';
@@ -55,6 +60,11 @@ export interface GlobalAiConfig {
   readOnlyMode: boolean;
   keyRouteMode?: AiKeyRouteMode;
   aiModelPreset?: AiModelPreset;
+  aiPromptStyle?: AiPromptStyleConfig;
+  uiDefaults?: UiDefaultsConfig;
+  minClientVersion?: string;
+  extraAdminUids?: string[];
+  extraAdminEmails?: string[];
   announcement?: GlobalAnnouncement;
   sampleTemplate?: SampleContactTemplate;
   poll?: FeaturePoll;
@@ -67,8 +77,12 @@ export interface ServerAiStatus {
   guestAiEnabled: boolean;
   readOnlyMode: boolean;
   serverKeyConfigured: boolean;
+  isAdmin?: boolean;
   keyRouteMode?: AiKeyRouteMode;
   aiModelPreset?: AiModelPreset;
+  aiPromptStyle?: AiPromptStyleConfig;
+  uiDefaults?: UiDefaultsConfig;
+  minClientVersion?: string;
   serverStartedAtMs?: number;
   geminiModel?: string;
   announcement?: GlobalAnnouncement;
@@ -83,9 +97,59 @@ export type CloudFallbackReasonCode =
   | 'GUEST_AI_DISABLED'
   | 'NO_API_KEY';
 
+export function parseAdminList(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return Array.from(
+      new Set(
+        raw
+          .map((v) => String(v || '').trim())
+          .filter(Boolean)
+          .slice(0, 25)
+      )
+    );
+  }
+  if (typeof raw === 'string') {
+    return Array.from(
+      new Set(
+        raw
+          .split(/[\s,;]+/)
+          .map((v) => v.trim())
+          .filter(Boolean)
+          .slice(0, 25)
+      )
+    );
+  }
+  return [];
+}
+
+export function isVerifiedAdminIdentity(
+  identity: { uid?: string | null; email?: string | null; emailVerified?: boolean } | null | undefined,
+  policy: {
+    allowedUids: string[];
+    allowedEmails?: string[];
+  }
+): boolean {
+  if (!identity) return false;
+  const uid = String(identity.uid || '').trim();
+  if (uid && policy.allowedUids.some((allowed) => allowed.trim() === uid)) {
+    return true;
+  }
+  const email = String(identity.email || '').trim().toLowerCase();
+  if (
+    email &&
+    identity.emailVerified === true &&
+    Array.isArray(policy.allowedEmails) &&
+    policy.allowedEmails.some((allowed) => allowed.trim().toLowerCase() === email)
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export function isAdminUid(uid?: string | null, adminUid = ADMIN_UID): boolean {
   if (!uid || !adminUid) return false;
-  return uid.trim() === adminUid.trim();
+  const trimmedUid = uid.trim();
+  return parseAdminList(adminUid).includes(trimmedUid);
 }
 
 export function resolveAnalyzerMode(raw?: string | null): AnalyzerPreferenceMode {
@@ -108,18 +172,38 @@ export function parseGlobalAiConfig(raw: unknown): GlobalAiConfig {
     readOnlyMode?: unknown;
     keyRouteMode?: unknown;
     aiModelPreset?: unknown;
+    aiPromptStyle?: unknown;
+    uiDefaults?: unknown;
+    minClientVersion?: unknown;
+    extraAdminUids?: unknown;
+    extraAdminEmails?: unknown;
     announcement?: unknown;
     sampleTemplate?: unknown;
     poll?: unknown;
     updatedAt?: unknown;
     updatedBy?: unknown;
   };
+  const extraUids = parseAdminList(obj.extraAdminUids).filter((v) => !v.includes('@'));
+  const extraEmails = parseAdminList(obj.extraAdminEmails)
+    .filter((v) => v.includes('@'))
+    .map((v) => v.toLowerCase());
+
+  const cleanMinVer =
+    typeof obj.minClientVersion === 'string' && obj.minClientVersion.trim()
+      ? sanitizeVersionString(obj.minClientVersion)
+      : undefined;
+
   return {
     sharedAiEnabled: typeof obj.sharedAiEnabled === 'boolean' ? obj.sharedAiEnabled : true,
     guestAiEnabled: typeof obj.guestAiEnabled === 'boolean' ? obj.guestAiEnabled : true,
     readOnlyMode: typeof obj.readOnlyMode === 'boolean' ? obj.readOnlyMode : false,
     keyRouteMode: resolveAiKeyRouteMode(obj.keyRouteMode),
     aiModelPreset: resolveAiModelPreset(obj.aiModelPreset),
+    ...(obj.aiPromptStyle ? { aiPromptStyle: sanitizeAiPromptStyle(obj.aiPromptStyle) } : {}),
+    ...(obj.uiDefaults ? { uiDefaults: sanitizeUiDefaults(obj.uiDefaults) } : {}),
+    ...(cleanMinVer ? { minClientVersion: cleanMinVer } : {}),
+    ...(extraUids.length > 0 ? { extraAdminUids: extraUids } : {}),
+    ...(extraEmails.length > 0 ? { extraAdminEmails: extraEmails } : {}),
     announcement: obj.announcement ? sanitizeAnnouncement(obj.announcement) : undefined,
     sampleTemplate: obj.sampleTemplate ? sanitizeSampleTemplate(obj.sampleTemplate) : undefined,
     poll: obj.poll ? sanitizePoll(obj.poll) : undefined,

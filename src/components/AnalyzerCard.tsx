@@ -1,9 +1,10 @@
-import React, { useMemo } from 'react';
-import { MessageSquareText, RotateCcw, X } from 'lucide-react';
+import React, { useMemo, useRef } from 'react';
+import { FileUp, MessageSquareText, RotateCcw, X } from 'lucide-react';
 import type { AnalysisReport, Person } from '../types/notebook';
 import { AnimatePresence, motion } from 'motion/react';
 import { useI18n } from '../utils/LanguageContext';
 import { parseChatTranscript } from '../utils/chatParser';
+import { parseImportedChatFile } from '../utils/importers';
 import { FAST_TRANSITION, collapseVariants } from '../utils/motionPresets';
 
 interface AnalyzerCardProps {
@@ -14,6 +15,7 @@ interface AnalyzerCardProps {
   advisorQuery: string;
   advisorAnswer: string;
   isAskingAdvisor: boolean;
+  quickQuestions?: string[];
   onDraftChange: (text: string) => void;
   onFillDemo: () => void;
   onClearDraft: () => void;
@@ -24,6 +26,8 @@ interface AnalyzerCardProps {
   onAskAdvisor: (question: string) => void;
   onDismissAdvisor: () => void;
   onChatCleaned?: () => void;
+  onChatImported?: (count: number) => void;
+  onChatImportError?: () => void;
 }
 
 export const AnalyzerCard: React.FC<AnalyzerCardProps> = ({
@@ -34,6 +38,7 @@ export const AnalyzerCard: React.FC<AnalyzerCardProps> = ({
   advisorQuery,
   advisorAnswer,
   isAskingAdvisor,
+  quickQuestions,
   onDraftChange,
   onFillDemo,
   onClearDraft,
@@ -44,8 +49,13 @@ export const AnalyzerCard: React.FC<AnalyzerCardProps> = ({
   onAskAdvisor,
   onDismissAdvisor,
   onChatCleaned,
+  onChatImported,
+  onChatImportError,
 }) => {
   const { t } = useI18n();
+  const chatFileInputRef = useRef<HTMLInputElement | null>(null);
+  const advisorPrompts =
+    quickQuestions && quickQuestions.length > 0 ? quickQuestions : t.analyzer.quickQuestions;
   const chatPreview = useMemo(
     () => parseChatTranscript(draftText, person.name),
     [draftText, person.name]
@@ -54,6 +64,25 @@ export const AnalyzerCard: React.FC<AnalyzerCardProps> = ({
     chatPreview.isChat &&
     Boolean(chatPreview.cleanedText) &&
     chatPreview.cleanedText !== draftText.trim();
+
+  const handleChatFilePicked = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const content = String(ev.target?.result || '');
+        const parsed = parseImportedChatFile(file.name, content, person.name);
+        if (!parsed.ok || !parsed.extractedText.trim()) {
+          onChatImportError?.();
+          return;
+        }
+        onDraftChange(parsed.extractedText);
+        onChatImported?.(parsed.messageCount);
+      } catch {
+        onChatImportError?.();
+      }
+    };
+    reader.readAsText(file);
+  };
 
   return (
     <section
@@ -66,14 +95,38 @@ export const AnalyzerCard: React.FC<AnalyzerCardProps> = ({
       <div className="flex items-center justify-between gap-3 mb-2.5">
         <h2 className="text-sm font-semibold tracking-tight">{t.analyzer.title}</h2>
 
-        <button
-          type="button"
-          onClick={onFillDemo}
-          className="text-xs font-medium px-2 py-1 rounded transition-colors hover:bg-[var(--bg-hover)]"
-          style={{ color: 'var(--text-secondary)' }}
-        >
-          {t.analyzer.insertDemo}
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            disabled={isAnalyzing}
+            onClick={() => chatFileInputRef.current?.click()}
+            title={t.analyzer.importChatTitle}
+            className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded transition-colors hover:bg-[var(--bg-hover)] disabled:opacity-50 whitespace-nowrap"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            <FileUp className="w-3.5 h-3.5" />
+            <span>{t.analyzer.importChatBtn}</span>
+          </button>
+          <input
+            ref={chatFileInputRef}
+            type="file"
+            accept=".txt,.json,text/plain,application/json"
+            hidden
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleChatFilePicked(file);
+              e.target.value = '';
+            }}
+          />
+          <button
+            type="button"
+            onClick={onFillDemo}
+            className="text-xs font-medium px-2 py-1 rounded transition-colors hover:bg-[var(--bg-hover)] whitespace-nowrap"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            {t.analyzer.insertDemo}
+          </button>
+        </div>
       </div>
 
       <textarea
@@ -270,12 +323,12 @@ export const AnalyzerCard: React.FC<AnalyzerCardProps> = ({
           <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
             {t.analyzer.quickQuestionLabel}
           </span>
-          {t.analyzer.quickQuestions.map((q) => (
+          {advisorPrompts.map((q) => (
             <button
               key={q}
               type="button"
               onClick={() => onAskAdvisor(q)}
-              className="text-xs transition-colors hover:underline"
+              className="text-xs transition-colors hover:underline text-left"
               style={{ color: 'var(--text-secondary)' }}
             >
               {q}

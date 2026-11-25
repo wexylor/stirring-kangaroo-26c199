@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pin, Plus, CalendarPlus, Trash2 } from 'lucide-react';
+import { Pin, Plus, CalendarPlus, Trash2, MessageCircle } from 'lucide-react';
 import type { Person } from '../types/notebook';
 import { DEFAULT_GROUPS, getAvatarGradient } from '../data/sampleData';
 import { formatDateTime, getInitials } from '../utils/storage';
@@ -10,12 +10,14 @@ import { translateGroupLabel } from '../utils/i18n';
 
 interface ProfileCardProps {
   person: Person;
+  defaultGroups?: string[];
   onRename: (newName: string) => void;
   onEditSubtitle: (newSubtitle: string) => void;
   onTogglePin: () => void;
   onChangeGroup: (group: string) => void;
   onChangeInterval: (days: number) => void;
   onOpenDossier: () => void;
+  onOpenGreeting?: () => void;
   onOpenAddColumn: () => void;
   onOpenAddMeeting: () => void;
   onDeduplicate: () => void;
@@ -24,12 +26,14 @@ interface ProfileCardProps {
 
 export const ProfileCard: React.FC<ProfileCardProps> = ({
   person,
+  defaultGroups,
   onRename,
   onEditSubtitle,
   onTogglePin,
   onChangeGroup,
   onChangeInterval,
   onOpenDossier,
+  onOpenGreeting,
   onOpenAddColumn,
   onOpenAddMeeting,
   onDeduplicate,
@@ -37,6 +41,12 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
 }) => {
   const { lang, t } = useI18n();
   useLiveMinute();
+  const groupOptions = Array.from(
+    new Set([
+      ...(defaultGroups && defaultGroups.length > 0 ? defaultGroups : DEFAULT_GROUPS),
+      ...(person.group && person.group.trim() ? [person.group.trim()] : []),
+    ])
+  );
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(person.name);
   const [editingSub, setEditingSub] = useState(false);
@@ -166,6 +176,23 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
             <span>{t.profileCard.summaryBtn}</span>
           </button>
 
+          {onOpenGreeting && (
+            <button
+              type="button"
+              onClick={onOpenGreeting}
+              title={t.profileCard.greetTitle}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-[13px] font-medium whitespace-nowrap shrink-0 transition-colors hover:bg-[var(--bg-hover)]"
+              style={{
+                backgroundColor: 'var(--bg-surface)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-primary)',
+              }}
+            >
+              <MessageCircle className="w-3.5 h-3.5 opacity-70" />
+              <span>{t.profileCard.greetBtn}</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={onOpenAddMeeting}
@@ -271,7 +298,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
             }}
           >
             <option value="">{t.groups.none}</option>
-            {DEFAULT_GROUPS.map((g) => (
+            {groupOptions.map((g) => (
               <option key={g} value={g}>
                 {translateGroupLabel(g, lang)}
               </option>

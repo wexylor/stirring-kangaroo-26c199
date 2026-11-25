@@ -5,6 +5,8 @@ import {
   classifyGeminiError,
   getAiModelSpec,
   isAdminUid,
+  isVerifiedAdminIdentity,
+  parseAdminList,
   parseGlobalAiConfig,
   resolveAiModelPreset,
   resolveAnalyzerMode,
@@ -14,9 +16,34 @@ import {
 test('isAdminUid matches configured administrator UID strictly', () => {
   assert.equal(isAdminUid(ADMIN_UID), true);
   assert.equal(isAdminUid(`  ${ADMIN_UID}  `), true);
+  assert.equal(isAdminUid(ADMIN_UID, `other_uid, ${ADMIN_UID}`), true);
   assert.equal(isAdminUid('other-user-uid'), false);
   assert.equal(isAdminUid(null), false);
   assert.equal(isAdminUid(''), false);
+});
+
+test('parseAdminList and isVerifiedAdminIdentity enforce verified email & multi-UID access', () => {
+  assert.deepEqual(parseAdminList('uid1, uid2; uid1\nuid3'), ['uid1', 'uid2', 'uid3']);
+  assert.deepEqual(parseAdminList([' a ', 'b', 'a']), ['a', 'b']);
+
+  const policy = {
+    allowedUids: [ADMIN_UID, 'second_uid'],
+    allowedEmails: ['owner@example.com'],
+  };
+  assert.equal(isVerifiedAdminIdentity({ uid: ADMIN_UID }, policy), true);
+  assert.equal(isVerifiedAdminIdentity({ uid: 'second_uid' }, policy), true);
+  assert.equal(
+    isVerifiedAdminIdentity({ uid: 'other', email: 'OWNER@example.com', emailVerified: true }, policy),
+    true
+  );
+  assert.equal(
+    isVerifiedAdminIdentity({ uid: 'other', email: 'owner@example.com', emailVerified: false }, policy),
+    false
+  );
+  assert.equal(
+    isVerifiedAdminIdentity({ uid: 'other', email: 'stranger@example.com', emailVerified: true }, policy),
+    false
+  );
 });
 
 test('resolveAnalyzerMode defaults to auto unless explicitly local', () => {

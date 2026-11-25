@@ -19,9 +19,19 @@ import {
   EyeOff,
   MessageSquarePlus,
   Send,
+  Copy,
+  Check,
+  MessageCircle,
+  Share2,
 } from 'lucide-react';
 import type { AnalyzerPreferenceMode } from '../utils/aiPolicy';
-import type { DossierData, MeetingType } from '../types/notebook';
+import type { DossierData, MeetingType, Person } from '../types/notebook';
+import type { UiDefaultSection, UserFeedbackTicketSummary } from '../utils/adminOps';
+import {
+  buildLocalGreeting,
+  type GreetingOccasion,
+  type GreetingTone,
+} from '../utils/greetingGenerator';
 import { AVATAR_COLORS, DEFAULT_GROUPS } from '../data/sampleData';
 import {
   bindRealEmailToUser,
@@ -31,7 +41,7 @@ import {
   resendVerificationForUser,
   sendPasswordResetForEmail,
 } from '../services/firebase';
-import { getTodayInputDate } from '../utils/storage';
+import { formatDateTime, getTodayInputDate } from '../utils/storage';
 import {
   AUTHOR_INSTAGRAM_HANDLE,
   AUTHOR_INSTAGRAM_URL,
@@ -183,6 +193,8 @@ interface AccountModalProps {
   isAdmin?: boolean;
   onOpenAdminPanel?: () => void;
   onSubmitFeedback?: (type: 'bug' | 'idea', text: string) => Promise<void>;
+  myTickets?: UserFeedbackTicketSummary[];
+  loadingTickets?: boolean;
   onToast: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void;
 }
 
@@ -200,6 +212,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   isAdmin = false,
   onOpenAdminPanel,
   onSubmitFeedback,
+  myTickets = [],
+  loadingTickets = false,
   onToast,
 }) => {
   const { lang, setLang, t } = useI18n();
@@ -215,6 +229,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   const [feedbackType, setFeedbackType] = useState<'bug' | 'idea'>('bug');
   const [feedbackText, setFeedbackText] = useState('');
   const [sendingFeedback, setSendingFeedback] = useState(false);
+  const [uidCopied, setUidCopied] = useState(false);
 
   const runRefreshStatus = async (manual = false) => {
     if (!user || !onRefreshAccount || checkingStatus) return;
@@ -250,6 +265,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       setShowChangeEmail(false);
       setFeedbackOpen(false);
       setFeedbackText('');
+      setUidCopied(false);
       if (user && onRefreshAccount) {
         void runRefreshStatus(false);
       }
@@ -352,6 +368,33 @@ export const AccountModal: React.FC<AccountModalProps> = ({
             <div className="py-2.5 flex justify-between gap-3" style={{ borderColor: 'var(--border-color)' }}>
               <span style={{ color: 'var(--text-secondary)' }}>{t.account.login}</span>
               <span className="font-medium text-right break-all">{loginShown}</span>
+            </div>
+            <div className="py-2.5 flex justify-between gap-3 items-center" style={{ borderColor: 'var(--border-color)' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>{t.account.uidLabel}</span>
+              <div className="inline-flex items-center gap-1.5 min-w-0">
+                <span className="font-mono text-[11.5px] truncate max-w-[175px]" title={user.uid}>
+                  {user.uid}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(user.uid).catch(() => {});
+                    setUidCopied(true);
+                    onToast(t.account.uidCopiedToast, 'info');
+                    setTimeout(() => setUidCopied(false), 1800);
+                  }}
+                  aria-label={t.account.copyUidAria}
+                  title={t.account.copyUidAria}
+                  className="p-1 rounded border hover:bg-[var(--bg-hover)] shrink-0"
+                  style={{
+                    backgroundColor: 'var(--bg-elevated)',
+                    borderColor: 'var(--border-color)',
+                    color: uidCopied ? 'var(--success-text)' : 'var(--text-secondary)',
+                  }}
+                >
+                  {uidCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                </button>
+              </div>
             </div>
             <div className="py-2.5 flex justify-between gap-3 items-center" style={{ borderColor: 'var(--border-color)' }}>
               <span style={{ color: 'var(--text-secondary)' }}>{t.account.email}</span>
@@ -600,7 +643,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
         >
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 text-xs font-semibold">
-              <ShieldCheck className="w-4 h-4 shrink-0" style={{ color: 'var(--accent)' }} />
+              <ShieldCheck className="w-4 h-4 shrink-0" style={{ color: 'var(--success-text)' }} />
               <span>{t.account.adminTitle}</span>
             </div>
             <p className="text-[11.5px] mt-0.5 leading-snug" style={{ color: 'var(--text-secondary)' }}>
@@ -612,8 +655,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({
             onClick={onOpenAdminPanel}
             className="px-3 py-1.5 rounded-md text-xs font-semibold shrink-0 transition-opacity hover:opacity-90"
             style={{
-              backgroundColor: 'var(--accent)',
-              color: 'var(--accent-text)',
+              backgroundColor: 'var(--btn-primary-bg)',
+              color: 'var(--btn-primary-text)',
             }}
           >
             {t.account.openAdminPanelBtn}
@@ -727,6 +770,85 @@ export const AccountModal: React.FC<AccountModalProps> = ({
               </motion.form>
             )}
           </AnimatePresence>
+
+          <div className="mt-3 pt-3 border-t space-y-2" style={{ borderColor: 'var(--border-color)' }}>
+            <div className="text-[11.5px] font-medium" style={{ color: 'var(--text-secondary)' }}>
+              {t.account.myTicketsTitle}
+            </div>
+            {loadingTickets ? (
+              <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+                {t.common.loading}
+              </div>
+            ) : myTickets.length === 0 ? (
+              <div className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
+                {t.account.myTicketsEmpty}
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto thin-scrollbar pr-0.5">
+                {myTickets.map((tk) => (
+                  <div
+                    key={tk.id}
+                    className="p-2.5 rounded-md border text-xs space-y-1.5"
+                    style={{
+                      backgroundColor: 'var(--bg-input)',
+                      borderColor: 'var(--border-color)',
+                    }}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-1.5 text-[11px]">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className="font-semibold"
+                          style={{
+                            color:
+                              tk.status === 'resolved'
+                                ? 'var(--success-text)'
+                                : 'var(--warning-text)',
+                          }}
+                        >
+                          {tk.status === 'resolved'
+                            ? t.adminPanel.ticketStatusResolved
+                            : t.adminPanel.ticketStatusOpen}
+                        </span>
+                        {tk.tags?.map((tag) => (
+                          <span
+                            key={tag}
+                            className="px-1.5 py-0.5 rounded border text-[10px]"
+                            style={{
+                              borderColor: 'var(--border-color)',
+                              color: 'var(--text-secondary)',
+                            }}
+                          >
+                            {t.adminPanel.ticketTags[tag]}
+                          </span>
+                        ))}
+                      </div>
+                      <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                        {formatDateTime(tk.createdAt, lang)}
+                      </span>
+                    </div>
+                    <p className="text-[12px] leading-snug" style={{ color: 'var(--text-primary)' }}>
+                      {tk.text}
+                    </p>
+                    {tk.adminReply && (
+                      <div
+                        className="p-2 rounded border text-[11.5px] leading-snug"
+                        style={{
+                          backgroundColor: 'var(--bg-elevated)',
+                          borderColor: 'var(--success-border)',
+                          color: 'var(--text-primary)',
+                        }}
+                      >
+                        <span className="font-semibold" style={{ color: 'var(--success-text)' }}>
+                          {t.account.myTicketsReplyPrefix}{' '}
+                        </span>
+                        <span>{tk.adminReply}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1312,24 +1434,33 @@ export const DeleteAccountModal: React.FC<DeleteAccountModalProps> = ({
    ============================================================================ */
 interface AddPersonModalProps {
   open: boolean;
+  defaultGroups?: string[];
   onClose: () => void;
   onCreate: (name: string, subtitle: string, colorId: string, group: string) => void;
 }
 
-export const AddPersonModal: React.FC<AddPersonModalProps> = ({ open, onClose, onCreate }) => {
+export const AddPersonModal: React.FC<AddPersonModalProps> = ({
+  open,
+  defaultGroups,
+  onClose,
+  onCreate,
+}) => {
   const { lang, t } = useI18n();
+  const groupOptions =
+    defaultGroups && defaultGroups.length > 0 ? defaultGroups : DEFAULT_GROUPS;
   const [name, setName] = useState('');
   const [subtitle, setSubtitle] = useState('');
-  const [group, setGroup] = useState('Друзья');
+  const [group, setGroup] = useState(groupOptions[0] || 'Друзья');
   const [colorId, setColorId] = useState('violet');
 
   useEffect(() => {
     if (open) {
       setName('');
       setSubtitle('');
-      setGroup('Друзья');
+      setGroup(groupOptions[0] || 'Друзья');
       setColorId('violet');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   return (
@@ -1409,7 +1540,7 @@ export const AddPersonModal: React.FC<AddPersonModalProps> = ({ open, onClose, o
             }}
           >
             <option value="">{t.groups.none}</option>
-            {DEFAULT_GROUPS.map((g) => (
+            {groupOptions.map((g) => (
               <option key={g} value={g}>
                 {translateGroupLabel(g, lang)}
               </option>
@@ -1473,11 +1604,17 @@ export const AddPersonModal: React.FC<AddPersonModalProps> = ({ open, onClose, o
    ============================================================================ */
 interface AddColumnModalProps {
   open: boolean;
+  defaultSections?: UiDefaultSection[];
   onClose: () => void;
   onCreate: (title: string, icon: string) => void;
 }
 
-export const AddColumnModal: React.FC<AddColumnModalProps> = ({ open, onClose, onCreate }) => {
+export const AddColumnModal: React.FC<AddColumnModalProps> = ({
+  open,
+  defaultSections,
+  onClose,
+  onCreate,
+}) => {
   const { t } = useI18n();
   const [title, setTitle] = useState('');
 
@@ -1521,6 +1658,32 @@ export const AddColumnModal: React.FC<AddColumnModalProps> = ({ open, onClose, o
             }}
           />
         </div>
+
+        {defaultSections && defaultSections.length > 0 && (
+          <div className="space-y-1.5">
+            <div className="text-[11px] font-medium" style={{ color: 'var(--text-muted)' }}>
+              {t.modals.defaultSectionsSuggestLabel}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {defaultSections.map((sec) => (
+                <button
+                  key={`${sec.title}-${sec.icon}`}
+                  type="button"
+                  onClick={() => onCreate(sec.title, sec.icon)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border text-xs font-medium hover:bg-[var(--bg-hover)] transition-colors"
+                  style={{
+                    backgroundColor: 'var(--bg-elevated)',
+                    borderColor: 'var(--border-color)',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  <span>{sec.icon}</span>
+                  <span>{sec.title}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="flex justify-end gap-2">
           <button
@@ -2081,6 +2244,347 @@ export const SummaryModal: React.FC<SummaryModalProps> = ({
           {t.common.close}
         </button>
       </div>
+    </ModalWrapper>
+  );
+};
+
+/* ============================================================================
+   8. GREETING / FIRST MESSAGE GENERATOR MODAL
+   ============================================================================ */
+interface GreetingModalProps {
+  open: boolean;
+  person: Person | null;
+  canUseAi: boolean;
+  onClose: () => void;
+  onGenerateAi: (occasion: GreetingOccasion, tone: GreetingTone) => Promise<string>;
+  onCopy: (text: string) => void;
+}
+
+export const GreetingModal: React.FC<GreetingModalProps> = ({
+  open,
+  person,
+  canUseAi,
+  onClose,
+  onGenerateAi,
+  onCopy,
+}) => {
+  const { lang, t } = useI18n();
+  const [occasion, setOccasion] = useState<GreetingOccasion>('birthday');
+  const [tone, setTone] = useState<GreetingTone>('warm');
+  const [draft, setDraft] = useState('');
+  const [generating, setGenerating] = useState(false);
+
+  useEffect(() => {
+    if (!open || !person) return;
+    setDraft(buildLocalGreeting({ person, occasion, tone, lang }));
+  }, [open, person, occasion, tone, lang]);
+
+  if (!person) return null;
+
+  const handleGenerate = async () => {
+    if (generating) return;
+    setGenerating(true);
+    try {
+      const text = await onGenerateAi(occasion, tone);
+      if (text.trim()) setDraft(text.trim());
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <ModalWrapper
+      open={open}
+      onClose={onClose}
+      title={t.modals.greetModalTitle(person.name)}
+    >
+      <div className="space-y-3.5">
+        <div>
+          <div className="text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+            {t.modals.greetOccasionLabel}
+          </div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {(['birthday', 'reconnect', 'invite'] as const).map((occ) => {
+              const active = occasion === occ;
+              return (
+                <button
+                  key={occ}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setOccasion(occ)}
+                  className="px-2 py-1.5 rounded-md border text-xs font-medium transition-colors"
+                  style={
+                    active
+                      ? {
+                          backgroundColor: 'var(--btn-primary-bg)',
+                          borderColor: 'var(--btn-primary-bg)',
+                          color: 'var(--btn-primary-text)',
+                        }
+                      : {
+                          backgroundColor: 'var(--bg-elevated)',
+                          borderColor: 'var(--border-color)',
+                          color: 'var(--text-secondary)',
+                        }
+                  }
+                >
+                  {t.modals.greetOccasions[occ]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <div className="text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+            {t.modals.greetToneLabel}
+          </div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {(['warm', 'friendly', 'formal'] as const).map((tn) => {
+              const active = tone === tn;
+              return (
+                <button
+                  key={tn}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setTone(tn)}
+                  className="px-2 py-1.5 rounded-md border text-xs font-medium transition-colors"
+                  style={
+                    active
+                      ? {
+                          backgroundColor: 'var(--btn-primary-bg)',
+                          borderColor: 'var(--btn-primary-bg)',
+                          color: 'var(--btn-primary-text)',
+                        }
+                      : {
+                          backgroundColor: 'var(--bg-elevated)',
+                          borderColor: 'var(--border-color)',
+                          color: 'var(--text-secondary)',
+                        }
+                  }
+                >
+                  {t.modals.greetTones[tn]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between gap-2 mb-1.5">
+            <label
+              htmlFor="greetingResultTextarea"
+              className="text-xs font-medium"
+              style={{ color: 'var(--text-secondary)' }}
+            >
+              {t.modals.greetResultLabel}
+            </label>
+            <button
+              type="button"
+              disabled={generating}
+              onClick={handleGenerate}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded border text-xs font-medium hover:bg-[var(--bg-hover)] disabled:opacity-50"
+              style={{
+                backgroundColor: 'var(--bg-elevated)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-primary)',
+              }}
+            >
+              {canUseAi ? <Sparkles className="w-3 h-3" /> : <MessageCircle className="w-3 h-3" />}
+              <span>{generating ? t.modals.greetGeneratingBtn : t.modals.greetGenerateBtn}</span>
+            </button>
+          </div>
+          <textarea
+            id="greetingResultTextarea"
+            rows={5}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            className="w-full px-3 py-2 rounded-md border text-[13px] leading-relaxed outline-none resize-y"
+            style={{
+              backgroundColor: 'var(--bg-input)',
+              borderColor: 'var(--border-color)',
+            }}
+          />
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3.5 py-2 rounded-md border text-[13px] font-medium hover:bg-[var(--bg-hover)]"
+            style={{
+              backgroundColor: 'var(--bg-surface)',
+              borderColor: 'var(--border-color)',
+            }}
+          >
+            {t.common.close}
+          </button>
+          <button
+            type="button"
+            disabled={!draft.trim()}
+            onClick={() => onCopy(draft)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-[13px] font-medium hover:opacity-90 disabled:opacity-50"
+            style={{
+              backgroundColor: 'var(--btn-primary-bg)',
+              color: 'var(--btn-primary-text)',
+            }}
+          >
+            <Copy className="w-3.5 h-3.5" />
+            <span>{t.common.copy}</span>
+          </button>
+        </div>
+      </div>
+    </ModalWrapper>
+  );
+};
+
+/* ============================================================================
+   9. PWA SHARE TARGET MODAL
+   ============================================================================ */
+interface ShareTargetModalProps {
+  open: boolean;
+  people: Person[];
+  initialText: string;
+  suggestedNewName: string;
+  onClose: () => void;
+  onSubmit: (targetPersonId: string | 'new', newName: string, text: string) => void;
+}
+
+export const ShareTargetModal: React.FC<ShareTargetModalProps> = ({
+  open,
+  people,
+  initialText,
+  suggestedNewName,
+  onClose,
+  onSubmit,
+}) => {
+  const { t } = useI18n();
+  const [targetId, setTargetId] = useState<string>('new');
+  const [newName, setNewName] = useState('');
+  const [text, setText] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    setText(initialText);
+    setNewName(suggestedNewName || '');
+    setTargetId(people[0]?.id || 'new');
+  }, [open, initialText, suggestedNewName, people]);
+
+  return (
+    <ModalWrapper open={open} onClose={onClose} title={t.modals.shareModalTitle}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!text.trim()) return;
+          if (targetId === 'new' && !newName.trim()) return;
+          onSubmit(targetId, newName.trim(), text.trim());
+        }}
+        className="space-y-3.5"
+      >
+        <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+          {t.modals.shareModalDesc}
+        </p>
+
+        <div>
+          <label
+            htmlFor="shareTargetSelect"
+            className="block text-xs font-medium mb-1.5"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            {t.modals.shareTargetSelectLabel}
+          </label>
+          <select
+            id="shareTargetSelect"
+            value={targetId}
+            onChange={(e) => setTargetId(e.target.value)}
+            className="w-full px-3 py-2 rounded-md border text-sm outline-none"
+            style={{
+              backgroundColor: 'var(--bg-input)',
+              borderColor: 'var(--border-color)',
+            }}
+          >
+            {people.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+            <option value="new">{t.modals.shareNewContactOption}</option>
+          </select>
+        </div>
+
+        {targetId === 'new' && (
+          <div>
+            <label
+              htmlFor="shareNewContactNameInput"
+              className="block text-xs font-medium mb-1.5"
+              style={{ color: 'var(--text-secondary)' }}
+            >
+              {t.modals.nameReq}
+            </label>
+            <input
+              id="shareNewContactNameInput"
+              type="text"
+              required
+              maxLength={40}
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder={t.modals.namePlaceholder}
+              className="w-full px-3 py-2 rounded-md border text-sm outline-none"
+              style={{
+                backgroundColor: 'var(--bg-input)',
+                borderColor: 'var(--border-color)',
+              }}
+            />
+          </div>
+        )}
+
+        <div>
+          <label
+            htmlFor="shareTextArea"
+            className="block text-xs font-medium mb-1.5"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            {t.modals.shareTextLabel}
+          </label>
+          <textarea
+            id="shareTextArea"
+            rows={4}
+            required
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            className="w-full px-3 py-2 rounded-md border text-[13px] leading-relaxed outline-none resize-y"
+            style={{
+              backgroundColor: 'var(--bg-input)',
+              borderColor: 'var(--border-color)',
+            }}
+          />
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3.5 py-2 rounded-md border text-[13px] font-medium hover:bg-[var(--bg-hover)]"
+            style={{
+              backgroundColor: 'var(--bg-surface)',
+              borderColor: 'var(--border-color)',
+            }}
+          >
+            {t.common.cancel}
+          </button>
+          <button
+            type="submit"
+            disabled={!text.trim() || (targetId === 'new' && !newName.trim())}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-[13px] font-medium hover:opacity-90 disabled:opacity-50"
+            style={{
+              backgroundColor: 'var(--btn-primary-bg)',
+              color: 'var(--btn-primary-text)',
+            }}
+          >
+            <Share2 className="w-3.5 h-3.5" />
+            <span>{t.modals.shareAnalyzeBtn}</span>
+          </button>
+        </div>
+      </form>
     </ModalWrapper>
   );
 };

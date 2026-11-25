@@ -93,6 +93,8 @@ export interface Translations {
     importTitle: string;
     apiAria: string;
     apiTitle: string;
+    openAdminAria: string;
+    openAdminTitle: string;
     lightTheme: string;
     darkTheme: string;
     mobileNavAria: string;
@@ -121,6 +123,8 @@ export interface Translations {
     editSubtitleTitle: string;
     addSubtitlePlaceholder: string;
     summaryBtn: string;
+    greetBtn: string;
+    greetTitle: string;
     contactBtn: string;
     sectionBtn: string;
     dedupBtn: string;
@@ -146,6 +150,8 @@ export interface Translations {
   analyzer: {
     title: string;
     insertDemo: string;
+    importChatBtn: string;
+    importChatTitle: string;
     placeholder: (name: string) => string;
     shortcutHint: string;
     analyzing: string;
@@ -215,6 +221,9 @@ export interface Translations {
     title: string;
     name: string;
     login: string;
+    uidLabel: string;
+    copyUidAria: string;
+    uidCopiedToast: string;
     email: string;
     notLinked: string;
     verified: string;
@@ -299,6 +308,9 @@ export interface Translations {
     feedbackSendingBtn: string;
     feedbackSentToast: string;
     feedbackErrorToast: string;
+    myTicketsTitle: string;
+    myTicketsEmpty: string;
+    myTicketsReplyPrefix: string;
   };
   readOnly: {
     bannerTitle: string;
@@ -417,10 +429,79 @@ export interface Translations {
     ticketReopenBtn: string;
     ticketPublishBannerBtn: string;
     ticketReplyPlaceholder: string;
+    ticketFilterAll: string;
+    ticketTags: {
+      urgent: string;
+      in_progress: string;
+      fixed: string;
+    };
+    cannedReplies: string[];
     requestsLogTitle: string;
     requestsLogEmpty: string;
     eventsLogTitle: string;
     eventsLogEmpty: string;
+    accessControlTitle: string;
+    accessControlDesc: string;
+    accessCurrentUidLabel: string;
+    accessExtraUidsLabel: string;
+    accessExtraUidsPlaceholder: string;
+    accessExtraEmailsLabel: string;
+    accessExtraEmailsPlaceholder: string;
+    accessSaveBtn: string;
+    accessSavedToast: string;
+    ramLabel: string;
+    cacheLabel: string;
+    clearCacheBtn: string;
+    clearingCacheBtn: string;
+    cacheClearedToast: string;
+    servicesTitle: string;
+    serviceRtdb: string;
+    serviceAuth: string;
+    serviceGemini: string;
+    serviceOk: string;
+    serviceFail: string;
+    probeServicesBtn: string;
+    probingServicesBtn: string;
+    errorsBreakdownTitle: string;
+    errQuota429: string;
+    errTimeout503: string;
+    errAuthKey: string;
+    errNetworkOther: string;
+    heatmapTitle: string;
+    heatmapHoursLabel: string;
+    heatmapWeekdaysLabel: string;
+    weekdayShort: string[];
+    exportTitle: string;
+    exportCsvBtn: string;
+    exportJsonBtn: string;
+    exportedToast: string;
+    promptStyleTitle: string;
+    promptVerbosityLabel: string;
+    promptVerbosityConcise: string;
+    promptVerbosityDetailed: string;
+    promptGranularityLabel: string;
+    promptGranularityAtomic: string;
+    promptGranularityGrouped: string;
+    promptStyleSavedToast: string;
+    minVersionTitle: string;
+    minVersionDesc: string;
+    minVersionPlaceholder: string;
+    minVersionSaveBtn: string;
+    minVersionSavedToast: string;
+    uiDefaultsTitle: string;
+    uiDefaultsGroupsLabel: string;
+    uiDefaultsSectionsLabel: string;
+    uiDefaultsPromptsLabel: string;
+    uiDefaultsSaveBtn: string;
+    uiDefaultsResetBtn: string;
+    uiDefaultsSavedToast: string;
+    digestHourLabel: string;
+    backupTitle: string;
+    backupExportBtn: string;
+    backupImportBtn: string;
+    backupExportedToast: string;
+    backupImportedToast: string;
+    backupImportErrorToast: string;
   };
   deleteAccount: {
     modalTitle: string;
@@ -486,6 +567,29 @@ export interface Translations {
     copyBtn: string;
     downloadTxt: string;
     refreshBtn: string;
+    greetModalTitle: (name: string) => string;
+    greetOccasionLabel: string;
+    greetOccasions: {
+      birthday: string;
+      reconnect: string;
+      invite: string;
+    };
+    greetToneLabel: string;
+    greetTones: {
+      warm: string;
+      friendly: string;
+      formal: string;
+    };
+    greetGenerateBtn: string;
+    greetGeneratingBtn: string;
+    greetResultLabel: string;
+    shareModalTitle: string;
+    shareModalDesc: string;
+    shareTargetSelectLabel: string;
+    shareNewContactOption: string;
+    shareTextLabel: string;
+    shareAnalyzeBtn: string;
+    defaultSectionsSuggestLabel: string;
   };
   toasts: {
     guestMode: string;
@@ -515,6 +619,10 @@ export interface Translations {
     importLocalOnly: string;
     jsonImported: (count: number) => string;
     jsonInvalid: string;
+    vcardImported: (count: number) => string;
+    vcardEmpty: string;
+    chatImported: (count: number) => string;
+    chatImportInvalid: string;
     dedupDone: (count: number) => string;
     dedupNone: string;
     deleteColTitle: (title: string) => string;
@@ -541,6 +649,8 @@ export interface Translations {
     iosStep1: string;
     iosStep2: string;
     offlineBanner: string;
+    updateBannerText: (minVersion: string) => string;
+    updateNowBtn: string;
   };
 }
 
@@ -635,10 +745,12 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       profileTitle: 'Профиль, язык и синхронизация',
       exportAria: 'Экспорт JSON',
       exportTitle: 'Скачать резервную копию (JSON)',
-      importAria: 'Импорт JSON',
-      importTitle: 'Загрузить резервную копию (JSON)',
+      importAria: 'Импорт JSON или vCard (.vcf)',
+      importTitle: 'Загрузить копию (JSON) или визитку (.vcf)',
       apiAria: 'Настройки анализатора',
       apiTitle: 'Настройки анализатора',
+      openAdminAria: 'Открыть админ-панель',
+      openAdminTitle: 'Админ-панель',
       lightTheme: 'Светлая тема',
       darkTheme: 'Тёмная тема',
       mobileNavAria: 'Навигация по контактам',
@@ -668,6 +780,8 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       editSubtitleTitle: 'Нажмите, чтобы изменить описание',
       addSubtitlePlaceholder: 'Добавить краткое описание...',
       summaryBtn: 'Сводка',
+      greetBtn: 'Написать',
+      greetTitle: 'Составить поздравление или первое сообщение',
       contactBtn: 'Контакт',
       sectionBtn: 'Раздел',
       dedupBtn: 'Убрать дубли',
@@ -693,6 +807,8 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
     analyzer: {
       title: 'Новая заметка',
       insertDemo: 'Вставить пример',
+      importChatBtn: 'Из файла',
+      importChatTitle: 'Загрузить переписку (.txt или Telegram .json)',
       placeholder: (name) =>
         `Свободный текст о ${name}: привычки, вкусы, планы, важные даты...`,
       shortcutHint: 'Ctrl + Enter для разбора',
@@ -770,6 +886,9 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       title: 'Профиль',
       name: 'Имя',
       login: 'Логин',
+      uidLabel: 'Firebase UID',
+      copyUidAria: 'Скопировать Firebase UID',
+      uidCopiedToast: 'UID скопирован в буфер обмена',
       email: 'Почта',
       notLinked: 'Не привязана',
       verified: 'Подтверждена',
@@ -864,6 +983,9 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       feedbackSendingBtn: 'Отправка...',
       feedbackSentToast: 'Обращение отправлено администратору',
       feedbackErrorToast: 'Не удалось отправить обращение',
+      myTicketsTitle: 'Мои обращения и ответы',
+      myTicketsEmpty: 'Вы ещё не отправляли обращений с этого устройства',
+      myTicketsReplyPrefix: 'Ответ администратора:',
     },
     readOnly: {
       bannerTitle: 'Режим «Только чтение»: редактирование и запись в облако временно отключены на время обслуживания.',
@@ -991,10 +1113,83 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       ticketReopenBtn: 'Открыть снова',
       ticketPublishBannerBtn: 'Ответить в баннере',
       ticketReplyPlaceholder: 'Краткий ответ (необязательно)...',
+      ticketFilterAll: 'Все',
+      ticketTags: {
+        urgent: 'Срочно',
+        in_progress: 'В работе',
+        fixed: 'Исправлено',
+      },
+      cannedReplies: [
+        'Исправили, обновите страницу',
+        'Приняли в работу',
+        'Добавлено в ближайший план',
+      ],
       requestsLogTitle: 'Последние запросы к Gemini',
       requestsLogEmpty: 'Запросов к Gemini ещё не было',
       eventsLogTitle: 'Системный журнал',
       eventsLogEmpty: 'Событий пока нет',
+      accessControlTitle: 'Доступ к админ-панели (другие браузеры и устройства)',
+      accessControlDesc: 'Если вы входите под другим аккаунтом на втором устройстве или в другом браузере, добавьте его Firebase UID или подтверждённый Email.',
+      accessCurrentUidLabel: 'Ваш текущий UID',
+      accessExtraUidsLabel: 'Дополнительные Firebase UID (через запятую или с новой строки)',
+      accessExtraUidsPlaceholder: 'Например: xYz123AbC...',
+      accessExtraEmailsLabel: 'Дополнительные подтверждённые Email',
+      accessExtraEmailsPlaceholder: 'admin@example.com',
+      accessSaveBtn: 'Сохранить доступ',
+      accessSavedToast: 'Список доступа администраторов обновлён',
+      ramLabel: 'Память / AI-кэш',
+      cacheLabel: 'Кэш',
+      clearCacheBtn: 'Очистить AI-кэш',
+      clearingCacheBtn: 'Очистка...',
+      cacheClearedToast: 'AI-кэш Советника и Досье очищен',
+      servicesTitle: 'Здоровье сервисов',
+      serviceRtdb: 'Firebase RTDB',
+      serviceAuth: 'Google Auth',
+      serviceGemini: 'Gemini API',
+      serviceOk: 'ОК',
+      serviceFail: 'Сбой',
+      probeServicesBtn: 'Проверить всё',
+      probingServicesBtn: 'Пинг...',
+      errorsBreakdownTitle: 'Ошибки за всё время по кодам',
+      errQuota429: '429 Квота',
+      errTimeout503: 'Таймаут / 503',
+      errAuthKey: 'Ключ / 403',
+      errNetworkOther: 'Сеть / прочее',
+      heatmapTitle: 'Нагрузка по часам (UTC) и дням недели',
+      heatmapHoursLabel: 'По часам суток (00–23 UTC)',
+      heatmapWeekdaysLabel: 'По дням недели',
+      weekdayShort: ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'],
+      exportTitle: 'Экспорт журнала и статистики',
+      exportCsvBtn: 'Скачать CSV',
+      exportJsonBtn: 'Скачать JSON',
+      exportedToast: 'Файл выгружен',
+      promptStyleTitle: 'Стиль ответов Gemini',
+      promptVerbosityLabel: 'Советник',
+      promptVerbosityConcise: 'Короткие ответы',
+      promptVerbosityDetailed: 'Подробные ответы',
+      promptGranularityLabel: 'Разбор фактов',
+      promptGranularityAtomic: 'Дробно (атомарно)',
+      promptGranularityGrouped: 'Крупнее (группами)',
+      promptStyleSavedToast: 'Стиль промптов Gemini сохранён',
+      minVersionTitle: 'Версия клиента и мягкое обновление PWA',
+      minVersionDesc: 'Если у пользователя кэш старше указанной версии, покажется кнопка «Обновить сейчас».',
+      minVersionPlaceholder: '2.4.0',
+      minVersionSaveBtn: 'Применить версию',
+      minVersionSavedToast: 'Минимальная версия PWA обновлена',
+      uiDefaultsTitle: 'Дефолтные группы, разделы и подсказки советника',
+      uiDefaultsGroupsLabel: 'Стандартные группы (по одной или через запятую)',
+      uiDefaultsSectionsLabel: 'Быстрые разделы (Название | Эмодзи)',
+      uiDefaultsPromptsLabel: 'Быстрые вопросы под советником (по одному в строке)',
+      uiDefaultsSaveBtn: 'Сохранить настройки UI',
+      uiDefaultsResetBtn: 'Сбросить',
+      uiDefaultsSavedToast: 'Дефолтные разделы и подсказки обновлены',
+      digestHourLabel: 'Час автосводки (UTC)',
+      backupTitle: 'Бэкап и перенос конфигурации админки (1 клик)',
+      backupExportBtn: 'Скачать конфиг JSON',
+      backupImportBtn: 'Восстановить из JSON',
+      backupExportedToast: 'Конфигурация админки скачана',
+      backupImportedToast: 'Конфигурация админки успешно восстановлена',
+      backupImportErrorToast: 'Ошибка чтения или неверный формат файла конфига',
     },
     deleteAccount: {
       modalTitle: 'Удаление аккаунта',
@@ -1068,6 +1263,29 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       copyBtn: 'Скопировать',
       downloadTxt: 'Скачать .txt',
       refreshBtn: 'Обновить',
+      greetModalTitle: (name) => `Сообщение для ${name}`,
+      greetOccasionLabel: 'Повод',
+      greetOccasions: {
+        birthday: 'День рождения',
+        reconnect: 'Написать после перерыва',
+        invite: 'Пригласить на встречу',
+      },
+      greetToneLabel: 'Тон',
+      greetTones: {
+        warm: 'Тёплый и душевный',
+        friendly: 'Дружеский',
+        formal: 'Уважительный',
+      },
+      greetGenerateBtn: 'Улучшить через ИИ',
+      greetGeneratingBtn: 'Составляю...',
+      greetResultLabel: 'Готовый черновик',
+      shareModalTitle: 'Быстрая запись (Поделиться)',
+      shareModalDesc: 'Выберите контакт, чтобы сохранить и разобрать переданный текст.',
+      shareTargetSelectLabel: 'Куда сохранить',
+      shareNewContactOption: '+ Новый контакт из текста',
+      shareTextLabel: 'Переданный текст',
+      shareAnalyzeBtn: 'Разобрать в карточку',
+      defaultSectionsSuggestLabel: 'Быстрый выбор:',
     },
     toasts: {
       guestMode:
@@ -1102,6 +1320,10 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
         'Импорт выполнен локально, нажмите «Синхронизировать сейчас»',
       jsonImported: (count) => `Импортировано вкладок: ${count}`,
       jsonInvalid: 'Ошибка: неверный формат JSON-файла',
+      vcardImported: (count) => `Импортировано визиток (.vcf): ${count}`,
+      vcardEmpty: 'В файле .vcf не найдено контактов',
+      chatImported: (count) => `Загружена переписка из файла (сообщений: ${count})`,
+      chatImportInvalid: 'Файл пуст или имеет неподдерживаемый формат',
       dedupDone: (count) => `Очищено повторяющихся фактов: ${count}`,
       dedupNone: 'Дубликатов не найдено — все факты уникальны',
       deleteColTitle: (title) => `Удалить колонку «${title}»?`,
@@ -1130,6 +1352,8 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       iosStep1: 'Нажмите кнопку «Поделиться» в нижней панели Safari',
       iosStep2: 'Выберите «На экран „Домой“» → «Добавить»',
       offlineBanner: 'Офлайн-режим — работают сохранённые данные и локальный анализатор',
+      updateBannerText: (minVersion) => `Доступна новая версия приложения (v${minVersion}). Обновите кэш, чтобы увидеть свежие улучшения.`,
+      updateNowBtn: 'Обновить сейчас',
     },
   },
 
@@ -1223,10 +1447,12 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       profileTitle: 'Профиль, тіл және синхрондау',
       exportAria: 'JSON экспорт',
       exportTitle: 'Резервтік көшірмені жүктеу (JSON)',
-      importAria: 'JSON импорт',
-      importTitle: 'Резервтік көшірмені ашу (JSON)',
+      importAria: 'JSON немесе vCard (.vcf) импорт',
+      importTitle: 'Көшірме (JSON) немесе визитка (.vcf) жүктеу',
       apiAria: 'Талдағыш баптаулары',
       apiTitle: 'Талдағыш баптаулары',
+      openAdminAria: 'Әкімші панелін ашу',
+      openAdminTitle: 'Әкімші панелі',
       lightTheme: 'Ашық тақырып',
       darkTheme: 'Қараңғы тақырып',
       mobileNavAria: 'Контактілер навигациясы',
@@ -1256,6 +1482,8 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       editSubtitleTitle: 'Сипаттаманы өзгерту үшін басыңыз',
       addSubtitlePlaceholder: 'Қысқаша сипаттама қосу...',
       summaryBtn: 'Қорытынды',
+      greetBtn: 'Жазу',
+      greetTitle: 'Құттықтау немесе алғашқы хабарлама құрастыру',
       contactBtn: 'Байланыс',
       sectionBtn: 'Бөлім',
       dedupBtn: 'Қайталауды өшіру',
@@ -1281,6 +1509,8 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
     analyzer: {
       title: 'Жаңа жазба',
       insertDemo: 'Мысал қою',
+      importChatBtn: 'Файлдан',
+      importChatTitle: 'Хат алмасуды жүктеу (.txt немесе Telegram .json)',
       placeholder: (name) =>
         `${name} туралы еркін мәтін: әдеттері, талғамы, жоспарлары, маңызды күндері...`,
       shortcutHint: 'Талдау үшін Ctrl + Enter',
@@ -1358,6 +1588,9 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       title: 'Профиль',
       name: 'Аты',
       login: 'Логин',
+      uidLabel: 'Firebase UID',
+      copyUidAria: 'Firebase UID көшіру',
+      uidCopiedToast: 'UID алмасу буферіне көшірілді',
       email: 'Пошта',
       notLinked: 'Байланбаған',
       verified: 'Расталған',
@@ -1452,6 +1685,9 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       feedbackSendingBtn: 'Жіберілуде...',
       feedbackSentToast: 'Хабарлама әкімшіге жіберілді',
       feedbackErrorToast: 'Хабарламаны жіберу сәтсіз аяқталды',
+      myTicketsTitle: 'Менің өтініштерім және жауаптар',
+      myTicketsEmpty: 'Бұл құрылғыдан әзірге өтініштер жіберілген жоқ',
+      myTicketsReplyPrefix: 'Әкімші жауабы:',
     },
     readOnly: {
       bannerTitle: '«Тек оқу» режимі: қызмет көрсету кезінде бұлтқа жазу және өңдеу уақытша шектелді.',
@@ -1579,10 +1815,83 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       ticketReopenBtn: 'Қайта ашу',
       ticketPublishBannerBtn: 'Баннерде жауап беру',
       ticketReplyPlaceholder: 'Қысқа жауап (міндетті емес)...',
+      ticketFilterAll: 'Барлығы',
+      ticketTags: {
+        urgent: 'Шұғыл',
+        in_progress: 'Орындалуда',
+        fixed: 'Түзетілді',
+      },
+      cannedReplies: [
+        'Түзетілді, бетті жаңартыңыз',
+        'Жұмысқа қабылданды',
+        'Жақын жоспарға енгізілді',
+      ],
       requestsLogTitle: 'Соңғы Gemini сұраулары',
       requestsLogEmpty: 'Әзірге сұраулар болған жоқ',
       eventsLogTitle: 'Жүйе журналы',
       eventsLogEmpty: 'Оқиғалар жоқ',
+      accessControlTitle: 'Әкімші панеліне қолжетімділік (басқа браузерлер)',
+      accessControlDesc: 'Екінші құрылғыда немесе басқа браузерде бөлек аккаунтпен кірсеңіз, оның Firebase UID немесе расталған Email мекенжайын қосыңыз.',
+      accessCurrentUidLabel: 'Ағымдағы UID',
+      accessExtraUidsLabel: 'Қосымша Firebase UID (үтірмен немесе жаңа жолдан)',
+      accessExtraUidsPlaceholder: 'Мысалы: xYz123AbC...',
+      accessExtraEmailsLabel: 'Қосымша расталған Email',
+      accessExtraEmailsPlaceholder: 'admin@example.com',
+      accessSaveBtn: 'Қолжетімділікті сақтау',
+      accessSavedToast: 'Әкімшілер тізімі жаңартылды',
+      ramLabel: 'Жады / AI-кэш',
+      cacheLabel: 'Кэш',
+      clearCacheBtn: 'AI-кэшті тазарту',
+      clearingCacheBtn: 'Тазартылуда...',
+      cacheClearedToast: 'Кеңесші мен Досье кэші тазартылды',
+      servicesTitle: 'Сервистер күйі',
+      serviceRtdb: 'Firebase RTDB',
+      serviceAuth: 'Google Auth',
+      serviceGemini: 'Gemini API',
+      serviceOk: 'Қосулы',
+      serviceFail: 'Қате',
+      probeServicesBtn: 'Барлығын тексеру',
+      probingServicesBtn: 'Пинг...',
+      errorsBreakdownTitle: 'Қате кодтары бойынша бөлініс',
+      errQuota429: '429 Лимит',
+      errTimeout503: 'Таймаут / 503',
+      errAuthKey: 'Кілт / 403',
+      errNetworkOther: 'Желі / басқа',
+      heatmapTitle: 'Сағаттар (UTC) және апта күндері бойынша жүктеме',
+      heatmapHoursLabel: 'Тәулік сағаттары (00–23 UTC)',
+      heatmapWeekdaysLabel: 'Апта күндері',
+      weekdayShort: ['Дс', 'Сс', 'Ср', 'Бс', 'Жм', 'Сб', 'Жс'],
+      exportTitle: 'Журнал мен статистиканы экспорттау',
+      exportCsvBtn: 'CSV жүктеу',
+      exportJsonBtn: 'JSON жүктеу',
+      exportedToast: 'Файл жүктелді',
+      promptStyleTitle: 'Gemini жауап стилі',
+      promptVerbosityLabel: 'Кеңесші',
+      promptVerbosityConcise: 'Қысқа жауаптар',
+      promptVerbosityDetailed: 'Егжей-тегжейлі',
+      promptGranularityLabel: 'Деректерді бөлу',
+      promptGranularityAtomic: 'Ұсақтап (атомарлы)',
+      promptGranularityGrouped: 'Ірілетіп (топпен)',
+      promptStyleSavedToast: 'Gemini стилі сақталды',
+      minVersionTitle: 'Клиент нұсқасы және PWA жаңарту',
+      minVersionDesc: 'Пайдаланушы кэші ескірген болса, «Қазір жаңарту» ұсынысы шығады.',
+      minVersionPlaceholder: '2.4.0',
+      minVersionSaveBtn: 'Нұсқаны сақтау',
+      minVersionSavedToast: 'Ең төменгі PWA нұсқасы жаңартылды',
+      uiDefaultsTitle: 'Стандартты топтар, бөлімдер және жылдам сұрақтар',
+      uiDefaultsGroupsLabel: 'Стандартты топтар (жол сайын немесе үтірмен)',
+      uiDefaultsSectionsLabel: 'Жылдам бөлімдер (Атауы | Эмодзи)',
+      uiDefaultsPromptsLabel: 'Кеңесші астындағы жылдам сұрақтар',
+      uiDefaultsSaveBtn: 'UI баптауларын сақтау',
+      uiDefaultsResetBtn: 'Қалпына келтіру',
+      uiDefaultsSavedToast: 'Стандартты баптаулар сақталды',
+      digestHourLabel: 'Автоесеп сағаты (UTC)',
+      backupTitle: 'Әкімші конфигурациясын сақтау және көшіру',
+      backupExportBtn: 'Конфиг JSON жүктеу',
+      backupImportBtn: 'JSON-дан қалпына келтіру',
+      backupExportedToast: 'Конфигурация файлы жүктелді',
+      backupImportedToast: 'Конфигурация сәтті қалпына келтірілді',
+      backupImportErrorToast: 'Файл пішімі қате немесе оқылмады',
     },
     deleteAccount: {
       modalTitle: 'Аккаунтты жою',
@@ -1656,6 +1965,29 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       copyBtn: 'Көшіру',
       downloadTxt: '.txt жүктеу',
       refreshBtn: 'Жаңарту',
+      greetModalTitle: (name) => `${name} үшін хабарлама`,
+      greetOccasionLabel: 'Себеп',
+      greetOccasions: {
+        birthday: 'Туған күн',
+        reconnect: 'Үзілістен кейін жазу',
+        invite: 'Кездесуге шақыру',
+      },
+      greetToneLabel: 'Реңк',
+      greetTones: {
+        warm: 'Жылы әрі шын жүректен',
+        friendly: 'Достық',
+        formal: 'Сыпайы / ресми',
+      },
+      greetGenerateBtn: 'AI арқылы жақсарту',
+      greetGeneratingBtn: 'Дайындалуда...',
+      greetResultLabel: 'Дайын мәтін',
+      shareModalTitle: 'Жылдам жазба (Бөлісу)',
+      shareModalDesc: 'Жіберілген мәтінді сақтап, талдау үшін контактіні таңдаңыз.',
+      shareTargetSelectLabel: 'Қайда сақтау',
+      shareNewContactOption: '+ Мәтіннен жаңа контакт',
+      shareTextLabel: 'Жіберілген мәтін',
+      shareAnalyzeBtn: 'Карточкаға талдау',
+      defaultSectionsSuggestLabel: 'Жылдам таңдау:',
     },
     toasts: {
       guestMode: 'Жергілікті режим ашылды (деректер тек осы браузерде сақталады)',
@@ -1689,6 +2021,10 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
         'Импорт жергілікті орындалды, «Қазір синхрондау» түймесін басыңыз',
       jsonImported: (count) => `Импортталған қойындылар: ${count}`,
       jsonInvalid: 'Қате: JSON-файл пішімі дұрыс емес',
+      vcardImported: (count) => `Визитка (.vcf) импортталды: ${count}`,
+      vcardEmpty: '.vcf файлынан контактілер табылмады',
+      chatImported: (count) => `Файлдан хат алмасу жүктелді (хабарлама: ${count})`,
+      chatImportInvalid: 'Файл бос немесе пішімі қолдау көрсетілмейді',
       dedupDone: (count) => `Қайталанатын деректер тазартылды: ${count}`,
       dedupNone: 'Қайталау табылмады — барлық дерек бірегей',
       deleteColTitle: (title) => `«${title}» бөлімін жою керек пе?`,
@@ -1717,6 +2053,8 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       iosStep1: 'Safari төменгі панеліндегі «Бөлісу» түймесін басыңыз',
       iosStep2: '«Басты экранға» → «Қосу» таңдаңыз',
       offlineBanner: 'Офлайн-режим — сақталған деректер мен жергілікті талдағыш жұмыс істейді',
+      updateBannerText: (minVersion) => `Қосымшаның жаңа нұсқасы қолжетімді (v${minVersion}). Жаңарту үшін кэшті жаңартыңыз.`,
+      updateNowBtn: 'Қазір жаңарту',
     },
   },
 
@@ -1810,10 +2148,12 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       profileTitle: 'Profile, language & sync',
       exportAria: 'Export JSON',
       exportTitle: 'Download backup (JSON)',
-      importAria: 'Import JSON',
-      importTitle: 'Restore backup (JSON)',
+      importAria: 'Import JSON or vCard (.vcf)',
+      importTitle: 'Restore backup (JSON) or import vCard (.vcf)',
       apiAria: 'Analyzer settings',
       apiTitle: 'Analyzer settings',
+      openAdminAria: 'Open admin console',
+      openAdminTitle: 'Admin Console',
       lightTheme: 'Light theme',
       darkTheme: 'Dark theme',
       mobileNavAria: 'Contacts navigation',
@@ -1843,6 +2183,8 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       editSubtitleTitle: 'Click to edit note',
       addSubtitlePlaceholder: 'Add a short note...',
       summaryBtn: 'Summary',
+      greetBtn: 'Message',
+      greetTitle: 'Compose a greeting or icebreaker message',
       contactBtn: 'Contact',
       sectionBtn: 'Section',
       dedupBtn: 'Deduplicate',
@@ -1868,6 +2210,8 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
     analyzer: {
       title: 'New note',
       insertDemo: 'Insert sample',
+      importChatBtn: 'From file',
+      importChatTitle: 'Import chat history (.txt or Telegram .json)',
       placeholder: (name) =>
         `Free-form note about ${name}: habits, tastes, plans, important dates...`,
       shortcutHint: 'Ctrl + Enter to analyze',
@@ -1945,6 +2289,9 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       title: 'Profile',
       name: 'Name',
       login: 'Login',
+      uidLabel: 'Firebase UID',
+      copyUidAria: 'Copy Firebase UID',
+      uidCopiedToast: 'UID copied to clipboard',
       email: 'Email',
       notLinked: 'Not linked',
       verified: 'Verified',
@@ -2038,6 +2385,9 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       feedbackSendingBtn: 'Sending...',
       feedbackSentToast: 'Feedback sent to administrator',
       feedbackErrorToast: 'Failed to submit feedback',
+      myTicketsTitle: 'My feedback & admin replies',
+      myTicketsEmpty: 'You have not submitted any tickets from this browser yet',
+      myTicketsReplyPrefix: 'Admin reply:',
     },
     readOnly: {
       bannerTitle: 'Read-Only mode: editing and cloud writes are temporarily paused for maintenance.',
@@ -2165,10 +2515,83 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       ticketReopenBtn: 'Reopen',
       ticketPublishBannerBtn: 'Reply in banner',
       ticketReplyPlaceholder: 'Optional short reply...',
+      ticketFilterAll: 'All',
+      ticketTags: {
+        urgent: 'Urgent',
+        in_progress: 'In progress',
+        fixed: 'Fixed',
+      },
+      cannedReplies: [
+        'Fixed — please refresh the page',
+        'Working on this now',
+        'Added to the upcoming roadmap',
+      ],
       requestsLogTitle: 'Recent Gemini Requests',
       requestsLogEmpty: 'No Gemini requests recorded yet',
       eventsLogTitle: 'System Event Log',
       eventsLogEmpty: 'No events recorded yet',
+      accessControlTitle: 'Admin Console Access (Other Browsers & Devices)',
+      accessControlDesc: 'If you sign in with another account on a different browser or device, add its Firebase UID or verified email here.',
+      accessCurrentUidLabel: 'Your current UID',
+      accessExtraUidsLabel: 'Extra Firebase UIDs (comma or newline separated)',
+      accessExtraUidsPlaceholder: 'e.g. xYz123AbC...',
+      accessExtraEmailsLabel: 'Extra verified admin emails',
+      accessExtraEmailsPlaceholder: 'admin@example.com',
+      accessSaveBtn: 'Save access',
+      accessSavedToast: 'Admin access list updated',
+      ramLabel: 'Memory / AI Cache',
+      cacheLabel: 'Cache',
+      clearCacheBtn: 'Clear AI Cache',
+      clearingCacheBtn: 'Clearing...',
+      cacheClearedToast: 'Advisor & Dossier AI caches cleared',
+      servicesTitle: 'Service Health',
+      serviceRtdb: 'Firebase RTDB',
+      serviceAuth: 'Google Auth',
+      serviceGemini: 'Gemini API',
+      serviceOk: 'OK',
+      serviceFail: 'Fail',
+      probeServicesBtn: 'Probe all',
+      probingServicesBtn: 'Probing...',
+      errorsBreakdownTitle: 'Errors breakdown by code',
+      errQuota429: '429 Quota',
+      errTimeout503: 'Timeout / 503',
+      errAuthKey: 'Key / 403',
+      errNetworkOther: 'Network / other',
+      heatmapTitle: 'AI load by hour (UTC) & weekday',
+      heatmapHoursLabel: 'By hour of day (00–23 UTC)',
+      heatmapWeekdaysLabel: 'By day of week',
+      weekdayShort: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+      exportTitle: 'Export logs & statistics',
+      exportCsvBtn: 'Download CSV',
+      exportJsonBtn: 'Download JSON',
+      exportedToast: 'Telemetry export downloaded',
+      promptStyleTitle: 'Gemini Response Style',
+      promptVerbosityLabel: 'Advisor',
+      promptVerbosityConcise: 'Concise answers',
+      promptVerbosityDetailed: 'Detailed answers',
+      promptGranularityLabel: 'Fact distillation',
+      promptGranularityAtomic: 'Atomic facts',
+      promptGranularityGrouped: 'Grouped facts',
+      promptStyleSavedToast: 'Gemini prompt style saved',
+      minVersionTitle: 'Client Version & Soft PWA Update',
+      minVersionDesc: 'Users running a cached app older than this version see an "Update now" bar.',
+      minVersionPlaceholder: '2.4.0',
+      minVersionSaveBtn: 'Apply version',
+      minVersionSavedToast: 'Minimum PWA version updated',
+      uiDefaultsTitle: 'Default groups, sections & advisor prompts',
+      uiDefaultsGroupsLabel: 'Default groups (one per line or comma-separated)',
+      uiDefaultsSectionsLabel: 'Quick sections (Title | Emoji)',
+      uiDefaultsPromptsLabel: 'Advisor quick buttons (one per line)',
+      uiDefaultsSaveBtn: 'Save UI defaults',
+      uiDefaultsResetBtn: 'Reset',
+      uiDefaultsSavedToast: 'Default sections and prompts saved',
+      digestHourLabel: 'Auto digest hour (UTC)',
+      backupTitle: '1-Click Admin Config Backup & Restore',
+      backupExportBtn: 'Download config JSON',
+      backupImportBtn: 'Restore from JSON',
+      backupExportedToast: 'Admin configuration downloaded',
+      backupImportedToast: 'Admin configuration restored successfully',
+      backupImportErrorToast: 'Invalid or unreadable configuration JSON',
     },
     deleteAccount: {
       modalTitle: 'Delete account',
@@ -2242,6 +2665,29 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       copyBtn: 'Copy',
       downloadTxt: 'Download .txt',
       refreshBtn: 'Refresh',
+      greetModalTitle: (name) => `Message for ${name}`,
+      greetOccasionLabel: 'Occasion',
+      greetOccasions: {
+        birthday: 'Birthday wish',
+        reconnect: 'Catch up after a break',
+        invite: 'Invite to meet up',
+      },
+      greetToneLabel: 'Tone',
+      greetTones: {
+        warm: 'Warm & sincere',
+        friendly: 'Friendly',
+        formal: 'Polite & formal',
+      },
+      greetGenerateBtn: 'Polish with AI',
+      greetGeneratingBtn: 'Writing...',
+      greetResultLabel: 'Message draft',
+      shareModalTitle: 'Quick Share Capture',
+      shareModalDesc: 'Choose a contact to analyze the shared snippet into.',
+      shareTargetSelectLabel: 'Save to contact',
+      shareNewContactOption: '+ New contact from snippet',
+      shareTextLabel: 'Shared text',
+      shareAnalyzeBtn: 'Analyze into card',
+      defaultSectionsSuggestLabel: 'Quick pick:',
     },
     toasts: {
       guestMode: 'Local mode opened (data is stored only in this browser)',
@@ -2274,6 +2720,10 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       importLocalOnly: 'Imported locally — click «Sync now» to upload',
       jsonImported: (count) => `Contacts imported: ${count}`,
       jsonInvalid: 'Error: invalid JSON file format',
+      vcardImported: (count) => `vCard contacts imported: ${count}`,
+      vcardEmpty: 'No contacts found in .vcf file',
+      chatImported: (count) => `Chat loaded from file (lines: ${count})`,
+      chatImportInvalid: 'File is empty or has an unsupported format',
       dedupDone: (count) => `Removed duplicate facts: ${count}`,
       dedupNone: 'No duplicates found — all facts are unique',
       deleteColTitle: (title) => `Delete section «${title}»?`,
@@ -2302,6 +2752,8 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       iosStep1: 'Tap the Share button in the Safari toolbar',
       iosStep2: 'Choose "Add to Home Screen" → "Add"',
       offlineBanner: 'Offline mode — using saved notes and local analyzer',
+      updateBannerText: (minVersion) => `A newer app version (v${minVersion}) is available. Refresh to load updates.`,
+      updateNowBtn: 'Update now',
     },
   },
 };

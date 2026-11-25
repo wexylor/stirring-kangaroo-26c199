@@ -9,6 +9,8 @@ import {
   ADMIN_UID as DEFAULT_ADMIN_UID,
   classifyGeminiError,
   getAiModelSpec,
+  isVerifiedAdminIdentity,
+  parseAdminList,
   resolveAiModelPreset,
   type AiModelPreset,
 } from './src/utils/aiPolicy.ts';
@@ -28,19 +30,31 @@ import {
 import {
   ALLOWED_FEATURE_EVENTS,
   APP_VERSION,
+  DEFAULT_AI_PROMPT_STYLE,
+  buildAdminExportCsv,
   buildAdvisorCacheKey,
   buildDossierCacheKey,
   computeEndpointStats,
+  computeErrorBreakdown,
   createDefaultSampleTemplate,
+  createDefaultUiDefaults,
+  createEmptyActivityHeatmap,
   createEmptyFeatureCounters,
   isTrafficSpike,
   maskWebhookUrl,
+  recordActivitySlot,
+  sanitizeAiPromptStyle,
   sanitizeAnnouncement,
   sanitizePoll,
   sanitizeSampleTemplate,
+  sanitizeTicketTags,
+  sanitizeUiDefaults,
+  sanitizeVersionString,
   validateSafeWebhookUrl,
+  type ActivityHeatmapStats,
   type AdminSystemEvent,
   type AiEndpointName,
+  type AiPromptStyleConfig,
   type AiTelemetryRecord,
   type AlertWebhookTriggers,
   type DailyDigestSummary,
@@ -50,6 +64,11 @@ import {
   type GlobalAnnouncement,
   type SafeWebhookStatus,
   type SampleContactTemplate,
+  type ServiceProbeEntry,
+  type ServicesHealthSnapshot,
+  type TicketTag,
+  type UiDefaultsConfig,
+  type UserFeedbackTicketSummary,
 } from './src/utils/adminOps.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -90,7 +109,37 @@ function resolveListenPort(): number {
 
 const PORT = resolveListenPort();
 const SERVER_STARTED_AT_MS = Date.now();
-const ADMIN_UID = (process.env.ADMIN_UID || DEFAULT_ADMIN_UID).trim();
+const DEFAULT_ADMIN_EMAIL = 'arysergali@gmail.com';
+const ENV_ADMIN_UID_TOKENS = parseAdminList(process.env.ADMIN_UID);
+const ENV_ADMIN_EMAIL_TOKENS = parseAdminList(process.env.ADMIN_EMAIL);
+
+function buildAdminPolicy(cfg?: Pick<RtdbAiConfig, 'extraAdminUids' | 'extraAdminEmails'>) {
+  const allowedUids = Array.from(
+    new Set([
+      DEFAULT_ADMIN_UID,
+      ...ENV_ADMIN_UID_TOKENS.filter((v) => !v.includes('@')),
+      ...(cfg?.extraAdminUids || []),
+    ])
+  );
+  const allowedEmails = Array.from(
+    new Set(
+      [
+        DEFAULT_ADMIN_EMAIL,
+        ...ENV_ADMIN_UID_TOKENS.filter((v) => v.includes('@')),
+        ...ENV_ADMIN_EMAIL_TOKENS.filter((v) => v.includes('@')),
+        ...(cfg?.extraAdminEmails || []),
+      ].map((v) => v.toLowerCase())
+    )
+  );
+  return { allowedUids, allowedEmails };
+}
+
+function checkIsAdminIdentity(
+  identity: { uid?: string | null; email?: string | null; emailVerified?: boolean } | null | undefined,
+  cfg?: Pick<RtdbAiConfig, 'extraAdminUids' | 'extraAdminEmails'>
+): boolean {
+  return isVerifiedAdminIdentity(identity, buildAdminPolicy(cfg));
+}
 
 const FIREBASE_RTDB_URL =
   'https://friends-37e97-default-rtdb.europe-west1.firebasedatabase.app';
@@ -103,6 +152,12 @@ interface RtdbAiConfig {
   readOnlyMode: boolean;
   keyRouteMode: AiKeyRouteMode;
   aiModelPreset: AiModelPreset;
+  aiPromptStyle: AiPromptStyleConfig;
+  uiDefaults: UiDefaultsConfig;
+  minClientVersion: string;
+  dailyDigestHourUtc: number;
+  extraAdminUids: string[];
+  extraAdminEmails: string[];
   announcement: GlobalAnnouncement;
   sampleTemplate: SampleContactTemplate;
   poll: FeaturePoll;
@@ -119,6 +174,12 @@ const defaultRtdbConfig: RtdbAiConfig = {
   readOnlyMode: false,
   keyRouteMode: 'auto',
   aiModelPreset: 'balanced',
+  aiPromptStyle: { ...DEFAULT_AI_PROMPT_STYLE },
+  uiDefaults: createDefaultUiDefaults(),
+  minClientVersion: APP_VERSION,
+  dailyDigestHourUtc: 18,
+  extraAdminUids: [],
+  extraAdminEmails: [],
   announcement: { enabled: false, text: '', tone: 'info' },
   sampleTemplate: createDefaultSampleTemplate(),
   poll: { id: 'default-poll', enabled: false, question: '', options: [] },
@@ -147,6 +208,7 @@ const dossierCache = new Map<string, { data: unknown; cachedAt: number; estToken
 // Telemetry & Feature Analytics
 const telemetryRecords: AiTelemetryRecord[] = [];
 const featureCounters = createEmptyFeatureCounters();
+const activityHeatmap: ActivityHeatmapStats = createEmptyActivityHeatmap();
 let dossierRebuildCount = 0;
 let advisorCacheHits = 0;
 let dossierCacheHits = 0;
@@ -193,6 +255,8 @@ function resolveEnvWebhookUrl(): string {
 const webhookConfig: {
   url: string;
   triggers: AlertWebhookTriggers;
+  dailyDigestHourUtc: number;
+  lastAutoDigestDateKey?: string;
   lastSentAt?: string;
   lastError?: string;
 } = {
@@ -205,16 +269,23 @@ const webhookConfig: {
     onNewTicket: true,
     dailyDigestEnabled: false,
   },
+  dailyDigestHourUtc: 18,
 };
 
 const alertThrottleMap = new Map<string, number>();
 
-function getSafeWebhookStatus(): SafeWebhookStatus {
+function getSafeWebhookStatus(hourOverride?: number): SafeWebhookStatus {
   const validation = validateSafeWebhookUrl(webhookConfig.url);
+  const hour =
+    typeof hourOverride === 'number' && Number.isFinite(hourOverride)
+      ? hourOverride
+      : webhookConfig.dailyDigestHourUtc;
   if (!webhookConfig.url || !validation.valid || !validation.normalizedUrl) {
     return {
       configured: false,
       triggers: { ...webhookConfig.triggers },
+      dailyDigestHourUtc: hour,
+      lastAutoDigestDateKey: webhookConfig.lastAutoDigestDateKey,
       lastSentAt: webhookConfig.lastSentAt,
       lastError: webhookConfig.lastError,
     };
@@ -224,6 +295,8 @@ function getSafeWebhookStatus(): SafeWebhookStatus {
     provider: validation.provider,
     maskedTarget: maskWebhookUrl(validation.normalizedUrl),
     triggers: { ...webhookConfig.triggers },
+    dailyDigestHourUtc: hour,
+    lastAutoDigestDateKey: webhookConfig.lastAutoDigestDateKey,
     lastSentAt: webhookConfig.lastSentAt,
     lastError: webhookConfig.lastError,
   };
@@ -394,6 +467,11 @@ async function fetchRtdbAiConfig(forceRefresh = false): Promise<{
     }
     const data = (await res.json()) as Record<string, unknown> | null;
     if (data && typeof data === 'object') {
+      const hourRaw = Number(data.dailyDigestHourUtc);
+      const dailyDigestHourUtc =
+        Number.isFinite(hourRaw) && hourRaw >= 0 && hourRaw <= 23
+          ? Math.floor(hourRaw)
+          : 18;
       const cfg: RtdbAiConfig = {
         sharedAiEnabled:
           typeof data.sharedAiEnabled === 'boolean' ? data.sharedAiEnabled : true,
@@ -403,6 +481,16 @@ async function fetchRtdbAiConfig(forceRefresh = false): Promise<{
           typeof data.readOnlyMode === 'boolean' ? data.readOnlyMode : false,
         keyRouteMode: resolveAiKeyRouteMode(data.keyRouteMode),
         aiModelPreset: resolveAiModelPreset(data.aiModelPreset),
+        aiPromptStyle: sanitizeAiPromptStyle(data.aiPromptStyle),
+        uiDefaults: sanitizeUiDefaults(data.uiDefaults),
+        minClientVersion: data.minClientVersion
+          ? sanitizeVersionString(data.minClientVersion)
+          : APP_VERSION,
+        dailyDigestHourUtc,
+        extraAdminUids: parseAdminList(data.extraAdminUids).filter((v) => !v.includes('@')),
+        extraAdminEmails: parseAdminList(data.extraAdminEmails)
+          .filter((v) => v.includes('@'))
+          .map((v) => v.toLowerCase()),
         announcement: sanitizeAnnouncement(data.announcement),
         sampleTemplate: sanitizeSampleTemplate(data.sampleTemplate),
         poll: sanitizePoll(data.poll),
@@ -501,6 +589,12 @@ async function getEffectiveControlState(forceRtdb = false): Promise<{
         readOnlyMode: memoryOverride.readOnlyMode,
         keyRouteMode: memoryOverride.keyRouteMode,
         aiModelPreset: memoryOverride.aiModelPreset,
+        aiPromptStyle: memoryOverride.aiPromptStyle,
+        uiDefaults: memoryOverride.uiDefaults,
+        minClientVersion: memoryOverride.minClientVersion,
+        dailyDigestHourUtc: memoryOverride.dailyDigestHourUtc,
+        extraAdminUids: memoryOverride.extraAdminUids,
+        extraAdminEmails: memoryOverride.extraAdminEmails,
         announcement: memoryOverride.announcement,
         sampleTemplate: memoryOverride.sampleTemplate,
         poll: memoryOverride.poll,
@@ -724,7 +818,7 @@ async function executeGeminiWithFallback(
 
 async function verifyFirebaseIdToken(
   idToken: string
-): Promise<{ uid: string; email?: string } | null> {
+): Promise<{ uid: string; email?: string; emailVerified: boolean } | null> {
   if (!idToken) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
@@ -742,11 +836,15 @@ async function verifyFirebaseIdToken(
     );
     if (!res.ok) return null;
     const data = (await res.json()) as {
-      users?: Array<{ localId?: string; email?: string }>;
+      users?: Array<{ localId?: string; email?: string; emailVerified?: boolean }>;
     };
     const user = data?.users?.[0];
     if (!user?.localId) return null;
-    return { uid: user.localId, email: user.email };
+    return {
+      uid: user.localId,
+      email: user.email,
+      emailVerified: Boolean(user.emailVerified),
+    };
   } catch {
     return null;
   } finally {
@@ -754,7 +852,9 @@ async function verifyFirebaseIdToken(
   }
 }
 
-async function extractBearerUser(req: Request): Promise<{ uid: string; email?: string; token: string } | null> {
+async function extractBearerUser(
+  req: Request
+): Promise<{ uid: string; email?: string; emailVerified: boolean; token: string } | null> {
   const authHeader = String(req.headers.authorization || '');
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
   if (!token) return null;
@@ -777,12 +877,148 @@ function getLanguageInstruction(lang: string): string {
   return 'Отвечай на русском языке.';
 }
 
+function getServerMemoryMb(): { rssMb: number; heapUsedMb: number } {
+  const mem = process.memoryUsage();
+  return {
+    rssMb: Math.round((mem.rss / (1024 * 1024)) * 10) / 10,
+    heapUsedMb: Math.round((mem.heapUsed / (1024 * 1024)) * 10) / 10,
+  };
+}
+
+async function probeGoogleAuthService(): Promise<ServiceProbeEntry> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 3000);
+  const start = Date.now();
+  try {
+    const res = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(
+        FIREBASE_WEB_API_KEY
+      )}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: 'health_probe' }),
+        signal: controller.signal,
+      }
+    );
+    const latencyMs = Date.now() - start;
+    // 400 INVALID_ID_TOKEN proves Google Auth endpoint responded normally
+    const ok = res.ok || res.status === 400;
+    return { ok, latencyMs, detail: ok ? 'accounts:lookup' : `HTTP ${res.status}` };
+  } catch (err) {
+    return {
+      ok: false,
+      latencyMs: Date.now() - start,
+      detail: err instanceof Error ? err.message : 'Timeout',
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function buildServicesHealthSnapshot(
+  state: { config: RtdbAiConfig; rtdbOk: boolean; rtdbLatencyMs: number },
+  activeGeminiProbe = false
+): Promise<ServicesHealthSnapshot> {
+  const googleAuth = await probeGoogleAuthService();
+  let gemini: ServiceProbeEntry;
+
+  if (activeGeminiProbe) {
+    const start = Date.now();
+    try {
+      const modelSpec = getAiModelSpec(state.config.aiModelPreset);
+      const exec = await executeGeminiWithFallback(state.config.keyRouteMode, {
+        model: modelSpec.modelId,
+        contents: 'Reply with a single word: OK',
+      });
+      gemini = {
+        ok: Boolean(exec.response.text),
+        latencyMs: exec.latencyMs,
+        detail: `${exec.slotUsed} · ${modelSpec.modelId}`,
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'ERR';
+      gemini = {
+        ok: false,
+        latencyMs: Date.now() - start,
+        detail: classifyGeminiError(msg).errorCode,
+      };
+    }
+  } else {
+    const keySnap = buildSafeServerKeySnapshot(state.config.keyRouteMode);
+    const activeSlot = keySnap.effectiveSlot || 'primary';
+    const slotInfo = keySnap.slots[activeSlot];
+    gemini = {
+      ok: keySnap.anyKeyConfigured && slotInfo.health !== 'invalid' && slotInfo.health !== 'error',
+      latencyMs: slotInfo.lastLatencyMs || 0,
+      detail: slotInfo.health,
+    };
+  }
+
+  return {
+    checkedAt: new Date().toISOString(),
+    rtdb: { ok: state.rtdbOk, latencyMs: state.rtdbLatencyMs, detail: 'RTDB' },
+    googleAuth,
+    gemini,
+  };
+}
+
+function toUserTicketSummary(ticket: FeedbackTicket): UserFeedbackTicketSummary {
+  return {
+    id: ticket.id,
+    type: ticket.type,
+    text: ticket.text,
+    status: ticket.status,
+    tags: ticket.tags,
+    createdAt: ticket.createdAt,
+    resolvedAt: ticket.resolvedAt,
+    adminReply: ticket.adminReply,
+  };
+}
+
+async function runScheduledDailyDigestTick() {
+  try {
+    if (!webhookConfig.triggers.dailyDigestEnabled || !webhookConfig.url) return;
+    const now = new Date();
+    const todayKey = now.toISOString().slice(0, 10);
+    if (webhookConfig.lastAutoDigestDateKey === todayKey) return;
+
+    const state = await getEffectiveControlState();
+    const targetHour =
+      typeof state.config.dailyDigestHourUtc === 'number'
+        ? state.config.dailyDigestHourUtc
+        : webhookConfig.dailyDigestHourUtc;
+
+    if (now.getUTCHours() !== targetHour) return;
+
+    webhookConfig.lastAutoDigestDateKey = todayKey;
+    const d = buildDailyDigest();
+    const errStats = computeErrorBreakdown(telemetryRecords);
+    const result = await dispatchWebhookMessage(
+      `📊 Автосводка дня (${d.dateKey})`,
+      `Активных пользователей: ${d.activeVisitors}\nЗапросов к Gemini: ${d.aiRequests} (ошибок: ${d.aiErrors}, 429: ${errStats.quota429}, timeout/503: ${errStats.timeout503})\nПопаданий в кэш: ${d.cacheHits} (~${d.tokensSavedEstimate} ток. сэкономлено)\nОткрытых тикетов: ${d.openTickets}`
+    );
+    pushSystemEvent(
+      result.ok ? 'info' : 'warning',
+      result.ok
+        ? `Автосводка за ${d.dateKey} отправлена по расписанию (${targetHour}:00 UTC)`
+        : `Автосводка не отправлена: ${result.error || 'ошибка'}`
+    );
+  } catch {
+    // Ignore scheduler errors
+  }
+}
+
 async function startServer() {
   const app = express();
   const httpServer = createHttpServer(app);
   app.use(express.json({ limit: '1mb' }));
 
   void loadTicketsFromRtdbOnce();
+  const digestSchedulerTimer = setInterval(() => {
+    void runScheduledDailyDigestTick();
+  }, 60_000);
+  digestSchedulerTimer.unref?.();
 
   app.get('/api/health', (_req: Request, res: Response) => {
     res.json({ ok: true, uptimeSec: Math.floor((Date.now() - SERVER_STARTED_AT_MS) / 1000) });
@@ -790,15 +1026,23 @@ async function startServer() {
 
   app.get('/api/ai/status', async (req: Request, res: Response) => {
     trackVisitorFromReq(req);
-    const state = await getEffectiveControlState();
+    const [state, bearerUser] = await Promise.all([
+      getEffectiveControlState(),
+      extractBearerUser(req).catch(() => null),
+    ]);
+    const isAdmin = checkIsAdminIdentity(bearerUser, state.config);
     res.json({
       ok: true,
       sharedAiEnabled: state.config.sharedAiEnabled,
       guestAiEnabled: state.config.guestAiEnabled,
       readOnlyMode: state.config.readOnlyMode,
       serverKeyConfigured: state.serverKeyConfigured,
+      isAdmin,
       keyRouteMode: state.config.keyRouteMode,
       aiModelPreset: state.config.aiModelPreset,
+      aiPromptStyle: state.config.aiPromptStyle,
+      uiDefaults: state.config.uiDefaults,
+      minClientVersion: state.config.minClientVersion,
       serverStartedAtMs: SERVER_STARTED_AT_MS,
       geminiModel: getAiModelSpec(state.config.aiModelPreset).modelId,
       announcement: state.config.announcement,
@@ -868,15 +1112,20 @@ async function startServer() {
         String(body?.authorLabel || (user ? user.email || 'Пользователь' : 'Гость'))
           .trim()
           .slice(0, 60) || 'Гость',
+      ...(user?.uid ? { authorUid: user.uid } : {}),
       isGuest: !user,
       lang: String(body?.lang || 'ru').slice(0, 8),
       appVersion: String(body?.appVersion || APP_VERSION).slice(0, 20),
       status: 'open',
+      tags: [],
       createdAt: new Date().toISOString(),
     };
     ticketsStore.unshift(ticket);
     if (ticketsStore.length > 100) {
       ticketsStore.length = 100;
+    }
+    if (user?.token) {
+      void persistTicketsToRtdb(user.token).catch(() => {});
     }
     pushSystemEvent(
       'info',
@@ -890,7 +1139,28 @@ async function startServer() {
         3000
       );
     }
-    res.json({ ok: true, ticketId: ticket.id });
+    res.json({ ok: true, ticketId: ticket.id, ticket: toUserTicketSummary(ticket) });
+  });
+
+  app.get('/api/feedback/my', async (req: Request, res: Response) => {
+    await loadTicketsFromRtdbOnce();
+    const user = await extractBearerUser(req).catch(() => null);
+    const idsParam = String(req.query.ids || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 25);
+
+    const matched: FeedbackTicket[] = ticketsStore.filter((tk) => {
+      if (user?.uid && tk.authorUid === user.uid) return true;
+      if (idsParam.includes(tk.id) && tk.isGuest) return true;
+      return false;
+    });
+
+    res.json({
+      ok: true,
+      tickets: matched.map(toUserTicketSummary),
+    });
   });
 
   app.post('/api/poll/vote', async (req: Request, res: Response) => {
@@ -948,8 +1218,11 @@ async function startServer() {
       res.status(401).json({ errorCode: 'UNAUTHORIZED', error: 'Missing auth token' });
       return null;
     }
-    const verified = await verifyFirebaseIdToken(token);
-    if (!verified || verified.uid !== ADMIN_UID) {
+    const [verified, state] = await Promise.all([
+      verifyFirebaseIdToken(token),
+      getEffectiveControlState(),
+    ]);
+    if (!verified || !checkIsAdminIdentity(verified, state.config)) {
       res.status(403).json({ errorCode: 'FORBIDDEN', error: 'Admin access required' });
       return null;
     }
@@ -968,16 +1241,24 @@ async function startServer() {
         ? Math.round(nonCacheRecords.reduce((s, r) => s + r.latencyMs, 0) / nonCacheRecords.length)
         : 0;
     const totalTokens = telemetryRecords.reduce((s, r) => s + r.totalTokens, 0);
+    const servicesHealth = await buildServicesHealthSnapshot(state, false);
 
     res.json({
       ok: true,
       appVersion: APP_VERSION,
+      minClientVersion: state.config.minClientVersion,
       serverStartedAtMs: SERVER_STARTED_AT_MS,
       serverNowMs: Date.now(),
       geminiModel: getAiModelSpec(state.config.aiModelPreset).modelId,
       rtdbStatus: {
         connected: state.rtdbOk,
         latencyMs: state.rtdbLatencyMs,
+      },
+      servicesHealth,
+      memoryUsage: getServerMemoryMb(),
+      cacheStats: {
+        advisorCacheCount: advisorCache.size,
+        dossierCacheCount: dossierCache.size,
       },
       flags: {
         sharedAiEnabled: state.config.sharedAiEnabled,
@@ -986,6 +1267,8 @@ async function startServer() {
         keyRouteMode: state.config.keyRouteMode,
         aiModelPreset: state.config.aiModelPreset,
       },
+      aiPromptStyle: state.config.aiPromptStyle,
+      uiDefaults: state.config.uiDefaults,
       keyStatus: buildSafeServerKeySnapshot(state.config.keyRouteMode),
       telemetry: {
         totalRequests: telemetryRecords.length,
@@ -996,6 +1279,12 @@ async function startServer() {
         dossierRebuildCount,
         tokensSavedEstimate,
         endpointStats,
+        errorBreakdown: computeErrorBreakdown(telemetryRecords),
+        activityHeatmap: {
+          hours: [...activityHeatmap.hours],
+          weekdays: [...activityHeatmap.weekdays],
+          totalCount: activityHeatmap.weekdays.reduce((acc, n) => acc + n, 0),
+        },
         recentRequests: telemetryRecords.slice(0, 20),
         featureCounters: { ...featureCounters },
         dailyDigest: buildDailyDigest(),
@@ -1003,10 +1292,97 @@ async function startServer() {
       announcement: state.config.announcement,
       sampleTemplate: state.config.sampleTemplate,
       poll: state.config.poll,
+      extraAdminUids: state.config.extraAdminUids,
+      extraAdminEmails: state.config.extraAdminEmails,
       tickets: ticketsStore,
-      webhook: getSafeWebhookStatus(),
+      webhook: getSafeWebhookStatus(state.config.dailyDigestHourUtc),
       events: systemEventsLog.slice(0, 25),
     });
+  });
+
+  app.get('/api/admin/health-probe', async (req: Request, res: Response) => {
+    const admin = await requireVerifiedAdmin(req, res);
+    if (!admin) return;
+    const state = await getEffectiveControlState(true);
+    const servicesHealth = await buildServicesHealthSnapshot(state, true);
+    pushSystemEvent(
+      servicesHealth.rtdb.ok && servicesHealth.googleAuth.ok && servicesHealth.gemini.ok
+        ? 'info'
+        : 'warning',
+      `Проверка сервисов: RTDB ${servicesHealth.rtdb.latencyMs}мс, Auth ${servicesHealth.googleAuth.latencyMs}мс, Gemini ${servicesHealth.gemini.latencyMs}мс`
+    );
+    res.json({
+      ok: true,
+      servicesHealth,
+      memoryUsage: getServerMemoryMb(),
+      cacheStats: {
+        advisorCacheCount: advisorCache.size,
+        dossierCacheCount: dossierCache.size,
+      },
+    });
+  });
+
+  app.post('/api/admin/cache/clear', async (req: Request, res: Response) => {
+    const admin = await requireVerifiedAdmin(req, res);
+    if (!admin) return;
+    const prevAdvisor = advisorCache.size;
+    const prevDossier = dossierCache.size;
+    advisorCache.clear();
+    dossierCache.clear();
+    pushSystemEvent(
+      'info',
+      `AI-кэш очищен вручную (Советник: ${prevAdvisor}, Досье: ${prevDossier})`
+    );
+    res.json({
+      ok: true,
+      clearedAdvisor: prevAdvisor,
+      clearedDossier: prevDossier,
+      cacheStats: {
+        advisorCacheCount: advisorCache.size,
+        dossierCacheCount: dossierCache.size,
+      },
+    });
+  });
+
+  app.post('/api/admin/access', async (req: Request, res: Response) => {
+    const admin = await requireVerifiedAdmin(req, res);
+    if (!admin) return;
+
+    const body = req.body as {
+      extraAdminUids?: unknown;
+      extraAdminEmails?: unknown;
+    } | undefined;
+    if (!body || typeof body !== 'object') {
+      res.status(400).json({ errorCode: 'BAD_REQUEST' });
+      return;
+    }
+
+    const extraAdminUids = parseAdminList(body.extraAdminUids).filter(
+      (v) => !v.includes('@') && v.length >= 6 && v.length <= 128
+    );
+    const extraAdminEmails = parseAdminList(body.extraAdminEmails)
+      .filter((v) => v.includes('@') && v.length <= 120)
+      .map((v) => v.toLowerCase());
+
+    const state = await getEffectiveControlState();
+    const nextConfig: RtdbAiConfig = {
+      ...state.config,
+      extraAdminUids,
+      extraAdminEmails,
+    };
+    const nowIso = new Date().toISOString();
+    const rtdbSynced = await patchRtdbConfig(admin.token, {
+      extraAdminUids,
+      extraAdminEmails,
+      updatedAt: nowIso,
+      updatedBy: admin.uid,
+    });
+    commitMemoryOverride(nextConfig, rtdbSynced);
+    pushSystemEvent(
+      'info',
+      `Обновлён список доступа к админке (UID: ${extraAdminUids.length}, Email: ${extraAdminEmails.length})`
+    );
+    res.json({ ok: true, extraAdminUids, extraAdminEmails, rtdbSynced });
   });
 
   app.post('/api/admin/flags', async (req: Request, res: Response) => {
@@ -1018,6 +1394,8 @@ async function startServer() {
       guestAiEnabled?: unknown;
       readOnlyMode?: unknown;
       aiModelPreset?: unknown;
+      aiPromptStyle?: unknown;
+      minClientVersion?: unknown;
     } | undefined;
     if (!body || typeof body !== 'object') {
       res.status(400).json({ errorCode: 'BAD_REQUEST' });
@@ -1034,6 +1412,19 @@ async function startServer() {
       : state.config.aiModelPreset;
     const modelChanged = nextPreset !== state.config.aiModelPreset;
 
+    const nextPromptStyle =
+      body.aiPromptStyle && typeof body.aiPromptStyle === 'object'
+        ? sanitizeAiPromptStyle(body.aiPromptStyle)
+        : state.config.aiPromptStyle;
+    const promptStyleChanged =
+      nextPromptStyle.advisorVerbosity !== state.config.aiPromptStyle.advisorVerbosity ||
+      nextPromptStyle.factGranularity !== state.config.aiPromptStyle.factGranularity;
+
+    const nextMinVersion =
+      typeof body.minClientVersion === 'string' && body.minClientVersion.trim()
+        ? sanitizeVersionString(body.minClientVersion, state.config.minClientVersion)
+        : state.config.minClientVersion;
+
     const nextConfig: RtdbAiConfig = {
       ...state.config,
       sharedAiEnabled:
@@ -1049,9 +1440,11 @@ async function startServer() {
           ? body.readOnlyMode
           : state.config.readOnlyMode,
       aiModelPreset: nextPreset,
+      aiPromptStyle: nextPromptStyle,
+      minClientVersion: nextMinVersion,
     };
 
-    if (modelChanged) {
+    if (modelChanged || promptStyleChanged) {
       advisorCache.clear();
       dossierCache.clear();
     }
@@ -1062,6 +1455,8 @@ async function startServer() {
       guestAiEnabled: nextConfig.guestAiEnabled,
       readOnlyMode: nextConfig.readOnlyMode,
       aiModelPreset: nextConfig.aiModelPreset,
+      aiPromptStyle: nextConfig.aiPromptStyle,
+      minClientVersion: nextConfig.minClientVersion,
       updatedAt: nowIso,
       updatedBy: admin.uid,
     });
@@ -1071,6 +1466,10 @@ async function startServer() {
       'info',
       modelChanged
         ? `Модель Gemini переключена: ${activeModelSpec.preset} (${activeModelSpec.modelId})`
+        : promptStyleChanged
+        ? `Стиль Gemini обновлён: ${nextPromptStyle.advisorVerbosity} / ${nextPromptStyle.factGranularity}`
+        : nextMinVersion !== state.config.minClientVersion
+        ? `Минимальная версия PWA обновлена: v${nextMinVersion}`
         : `Флаги обновлены: AI=${nextConfig.sharedAiEnabled ? 'on' : 'off'}, Гости=${
             nextConfig.guestAiEnabled ? 'on' : 'off'
           }, ReadOnly=${nextConfig.readOnlyMode ? 'on' : 'off'}`
@@ -1085,8 +1484,33 @@ async function startServer() {
         readOnlyMode: nextConfig.readOnlyMode,
         aiModelPreset: nextConfig.aiModelPreset,
       },
+      aiPromptStyle: nextConfig.aiPromptStyle,
+      minClientVersion: nextConfig.minClientVersion,
       rtdbSynced,
     });
+  });
+
+  app.post('/api/admin/ui-defaults', async (req: Request, res: Response) => {
+    const admin = await requireVerifiedAdmin(req, res);
+    if (!admin) return;
+
+    const state = await getEffectiveControlState();
+    const reset = Boolean((req.body as { reset?: unknown } | undefined)?.reset);
+    const uiDefaults = reset
+      ? createDefaultUiDefaults()
+      : sanitizeUiDefaults(req.body);
+    const nextConfig: RtdbAiConfig = { ...state.config, uiDefaults };
+    const rtdbSynced = await patchRtdbConfig(admin.token, {
+      uiDefaults,
+      updatedAt: new Date().toISOString(),
+      updatedBy: admin.uid,
+    });
+    commitMemoryOverride(nextConfig, rtdbSynced);
+    pushSystemEvent(
+      'info',
+      `Обновлены дефолтные группы (${uiDefaults.defaultGroups.length}), разделы (${uiDefaults.defaultSections.length}) и подсказки (${uiDefaults.quickAdvisorPrompts.length})`
+    );
+    res.json({ ok: true, uiDefaults, rtdbSynced });
   });
 
   app.post('/api/admin/announcement', async (req: Request, res: Response) => {
@@ -1183,6 +1607,7 @@ async function startServer() {
       id?: unknown;
       action?: unknown;
       reply?: unknown;
+      tags?: unknown;
       publishToBanner?: unknown;
     } | undefined;
     const id = String(body?.id || '').trim();
@@ -1202,10 +1627,18 @@ async function startServer() {
 
     const reply = String(body?.reply || '').trim().slice(0, 240);
     const existing = ticketsStore[idx];
-    const nextStatus: 'open' | 'resolved' = action === 'reopen' ? 'open' : 'resolved';
+    const nextTags =
+      body?.tags !== undefined ? sanitizeTicketTags(body.tags) : existing.tags || [];
+    const nextStatus: 'open' | 'resolved' =
+      action === 'update'
+        ? existing.status
+        : action === 'reopen'
+        ? 'open'
+        : 'resolved';
     ticketsStore[idx] = {
       ...existing,
       status: nextStatus,
+      tags: nextTags,
       resolvedAt: nextStatus === 'resolved' ? new Date().toISOString() : undefined,
       adminReply: reply || existing.adminReply,
     };
@@ -1240,6 +1673,7 @@ async function startServer() {
       webhookUrl?: unknown;
       clearUrl?: unknown;
       triggers?: Partial<AlertWebhookTriggers>;
+      dailyDigestHourUtc?: unknown;
     } | undefined;
 
     if (body?.clearUrl) {
@@ -1269,25 +1703,41 @@ async function startServer() {
       };
     }
 
+    const state = await getEffectiveControlState();
+    let nextHour = state.config.dailyDigestHourUtc;
+    if (typeof body?.dailyDigestHourUtc === 'number' && Number.isFinite(body.dailyDigestHourUtc)) {
+      nextHour = Math.max(0, Math.min(23, Math.floor(body.dailyDigestHourUtc)));
+      webhookConfig.dailyDigestHourUtc = nextHour;
+      const nextConfig: RtdbAiConfig = { ...state.config, dailyDigestHourUtc: nextHour };
+      const rtdbSynced = await patchRtdbConfig(admin.token, {
+        dailyDigestHourUtc: nextHour,
+        updatedAt: new Date().toISOString(),
+        updatedBy: admin.uid,
+      });
+      commitMemoryOverride(nextConfig, rtdbSynced);
+    }
+
     pushSystemEvent('info', 'Настройки webhook-оповещений обновлены');
-    res.json({ ok: true, webhook: getSafeWebhookStatus() });
+    res.json({ ok: true, webhook: getSafeWebhookStatus(nextHour) });
   });
 
   app.post('/api/admin/webhook/test', async (req: Request, res: Response) => {
     const admin = await requireVerifiedAdmin(req, res);
     if (!admin) return;
 
+    const state = await getEffectiveControlState();
     const kind = (req.body as { kind?: unknown } | undefined)?.kind;
     if (kind === 'digest') {
       const d = buildDailyDigest();
+      const errStats = computeErrorBreakdown(telemetryRecords);
       const result = await dispatchWebhookMessage(
         `📊 Ежедневная мини-сводка (${d.dateKey})`,
-        `Активных пользователей: ${d.activeVisitors}\nЗапросов к Gemini: ${d.aiRequests} (ошибок: ${d.aiErrors})\nПопаданий в кэш: ${d.cacheHits} (~${d.tokensSavedEstimate} ток. сэкономлено)\nОткрытых тикетов: ${d.openTickets}`
+        `Активных пользователей: ${d.activeVisitors}\nЗапросов к Gemini: ${d.aiRequests} (ошибок: ${d.aiErrors}, 429: ${errStats.quota429}, timeout/503: ${errStats.timeout503})\nПопаданий в кэш: ${d.cacheHits} (~${d.tokensSavedEstimate} ток. сэкономлено)\nОткрытых тикетов: ${d.openTickets}`
       );
       res.status(result.ok ? 200 : 400).json({
         ok: result.ok,
         error: result.error,
-        webhook: getSafeWebhookStatus(),
+        webhook: getSafeWebhookStatus(state.config.dailyDigestHourUtc),
       });
       return;
     }
@@ -1299,8 +1749,196 @@ async function startServer() {
     res.status(result.ok ? 200 : 400).json({
       ok: result.ok,
       error: result.error,
-      webhook: getSafeWebhookStatus(),
+      webhook: getSafeWebhookStatus(state.config.dailyDigestHourUtc),
     });
+  });
+
+  app.get('/api/admin/export', async (req: Request, res: Response) => {
+    const admin = await requireVerifiedAdmin(req, res);
+    if (!admin) return;
+    await loadTicketsFromRtdbOnce();
+
+    const format = String(req.query.format || 'json').toLowerCase() === 'csv' ? 'csv' : 'json';
+    const dateSlug = new Date().toISOString().slice(0, 10);
+
+    if (format === 'csv') {
+      const csv = buildAdminExportCsv({
+        requests: telemetryRecords,
+        tickets: ticketsStore,
+        events: systemEventsLog,
+      });
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="notebook-telemetry-${dateSlug}.csv"`
+      );
+      res.send(csv);
+      return;
+    }
+
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      appVersion: APP_VERSION,
+      errorBreakdown: computeErrorBreakdown(telemetryRecords),
+      activityHeatmap,
+      dailyDigest: buildDailyDigest(),
+      requests: telemetryRecords,
+      tickets: ticketsStore,
+      events: systemEventsLog,
+    };
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="notebook-telemetry-${dateSlug}.json"`
+    );
+    res.send(JSON.stringify(payload, null, 2));
+  });
+
+  app.get('/api/admin/config-export', async (req: Request, res: Response) => {
+    const admin = await requireVerifiedAdmin(req, res);
+    if (!admin) return;
+    await loadTicketsFromRtdbOnce();
+    const state = await getEffectiveControlState(true);
+
+    const bundle = {
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      appVersion: APP_VERSION,
+      appConfig: {
+        sharedAiEnabled: state.config.sharedAiEnabled,
+        guestAiEnabled: state.config.guestAiEnabled,
+        readOnlyMode: state.config.readOnlyMode,
+        keyRouteMode: state.config.keyRouteMode,
+        aiModelPreset: state.config.aiModelPreset,
+        aiPromptStyle: state.config.aiPromptStyle,
+        uiDefaults: state.config.uiDefaults,
+        minClientVersion: state.config.minClientVersion,
+        dailyDigestHourUtc: state.config.dailyDigestHourUtc,
+        extraAdminUids: state.config.extraAdminUids,
+        extraAdminEmails: state.config.extraAdminEmails,
+        announcement: state.config.announcement,
+        sampleTemplate: state.config.sampleTemplate,
+        poll: state.config.poll,
+      },
+      tickets: ticketsStore,
+      webhookTriggers: webhookConfig.triggers,
+    };
+
+    res.json({ ok: true, bundle });
+  });
+
+  app.post('/api/admin/config-import', async (req: Request, res: Response) => {
+    const admin = await requireVerifiedAdmin(req, res);
+    if (!admin) return;
+    await loadTicketsFromRtdbOnce();
+
+    const body = req.body as {
+      bundle?: {
+        appConfig?: Record<string, unknown>;
+        tickets?: unknown;
+        webhookTriggers?: Partial<AlertWebhookTriggers>;
+      };
+    } | undefined;
+    const rawAppConfig = body?.bundle?.appConfig;
+    if (!rawAppConfig || typeof rawAppConfig !== 'object') {
+      res.status(400).json({ errorCode: 'BAD_REQUEST', error: 'Invalid backup bundle' });
+      return;
+    }
+
+    const state = await getEffectiveControlState();
+    const nowIso = new Date().toISOString();
+
+    const extraAdminUids = parseAdminList(rawAppConfig.extraAdminUids).filter(
+      (v) => !v.includes('@') && v.length >= 6 && v.length <= 128
+    );
+    const extraAdminEmails = parseAdminList(rawAppConfig.extraAdminEmails)
+      .filter((v) => v.includes('@') && v.length <= 120)
+      .map((v) => v.toLowerCase());
+
+    const nextHour =
+      typeof rawAppConfig.dailyDigestHourUtc === 'number' &&
+      Number.isFinite(rawAppConfig.dailyDigestHourUtc)
+        ? Math.max(0, Math.min(23, Math.floor(rawAppConfig.dailyDigestHourUtc)))
+        : state.config.dailyDigestHourUtc;
+
+    const nextConfig: RtdbAiConfig = {
+      sharedAiEnabled:
+        typeof rawAppConfig.sharedAiEnabled === 'boolean'
+          ? rawAppConfig.sharedAiEnabled
+          : state.config.sharedAiEnabled,
+      guestAiEnabled:
+        typeof rawAppConfig.guestAiEnabled === 'boolean'
+          ? rawAppConfig.guestAiEnabled
+          : state.config.guestAiEnabled,
+      readOnlyMode:
+        typeof rawAppConfig.readOnlyMode === 'boolean'
+          ? rawAppConfig.readOnlyMode
+          : state.config.readOnlyMode,
+      keyRouteMode: resolveAiKeyRouteMode(rawAppConfig.keyRouteMode),
+      aiModelPreset: resolveAiModelPreset(rawAppConfig.aiModelPreset),
+      aiPromptStyle: sanitizeAiPromptStyle(rawAppConfig.aiPromptStyle),
+      uiDefaults: sanitizeUiDefaults(rawAppConfig.uiDefaults),
+      minClientVersion: sanitizeVersionString(
+        rawAppConfig.minClientVersion,
+        state.config.minClientVersion
+      ),
+      dailyDigestHourUtc: nextHour,
+      extraAdminUids,
+      extraAdminEmails,
+      announcement: sanitizeAnnouncement(rawAppConfig.announcement),
+      sampleTemplate: sanitizeSampleTemplate(rawAppConfig.sampleTemplate),
+      poll: sanitizePoll(rawAppConfig.poll),
+    };
+
+    webhookConfig.dailyDigestHourUtc = nextHour;
+    if (body?.bundle?.webhookTriggers && typeof body.bundle.webhookTriggers === 'object') {
+      webhookConfig.triggers = {
+        onInvalidKey: Boolean(body.bundle.webhookTriggers.onInvalidKey),
+        onQuotaExceeded: Boolean(body.bundle.webhookTriggers.onQuotaExceeded),
+        onTrafficSpike: Boolean(body.bundle.webhookTriggers.onTrafficSpike),
+        onNewUser: Boolean(body.bundle.webhookTriggers.onNewUser),
+        onNewTicket: Boolean(body.bundle.webhookTriggers.onNewTicket),
+        dailyDigestEnabled: Boolean(body.bundle.webhookTriggers.dailyDigestEnabled),
+      };
+    }
+
+    if (Array.isArray(body?.bundle?.tickets)) {
+      const sanitizedTickets: FeedbackTicket[] = body.bundle.tickets
+        .slice(0, 60)
+        .filter((t): t is Record<string, unknown> => Boolean(t && typeof t === 'object'))
+        .map((t) => ({
+          id: String(t.id || `tkt_${Date.now().toString(36)}`).slice(0, 60),
+          type: (t.type === 'bug' ? 'bug' : 'idea') as 'bug' | 'idea',
+          text: String(t.text || '').trim().slice(0, 500),
+          status: (t.status === 'resolved' ? 'resolved' : 'open') as 'open' | 'resolved',
+          tags: sanitizeTicketTags(t.tags),
+          lang: String(t.lang || 'ru').slice(0, 8),
+          authorLabel: String(t.authorLabel || 'Гость').slice(0, 48),
+          isGuest: Boolean(t.isGuest),
+          ...(typeof t.authorUid === 'string' && t.authorUid.trim()
+            ? { authorUid: t.authorUid.trim().slice(0, 128) }
+            : {}),
+          appVersion: String(t.appVersion || APP_VERSION).slice(0, 24),
+          createdAt: String(t.createdAt || nowIso),
+          ...(typeof t.resolvedAt === 'string' ? { resolvedAt: t.resolvedAt } : {}),
+          ...(typeof t.adminReply === 'string' ? { adminReply: t.adminReply.slice(0, 240) } : {}),
+        }))
+        .filter((t) => Boolean(t.text));
+      ticketsStore = sanitizedTickets;
+      await persistTicketsToRtdb(admin.token);
+    }
+
+    advisorCache.clear();
+    dossierCache.clear();
+
+    const rtdbSynced = await patchRtdbConfig(admin.token, {
+      ...nextConfig,
+      updatedAt: nowIso,
+      updatedBy: admin.uid,
+    });
+    commitMemoryOverride(nextConfig, rtdbSynced);
+    pushSystemEvent('info', 'Конфигурация админки восстановлена из JSON-бэкапа');
+    res.json({ ok: true, rtdbSynced });
   });
 
   app.post('/api/ai/admin/toggle', async (req: Request, res: Response) => {
@@ -1500,6 +2138,7 @@ async function startServer() {
     }
 
     const now = Date.now();
+    recordActivitySlot(activityHeatmap, new Date(now));
     aiRequestTimestamps.push(now);
     while (aiRequestTimestamps.length > 0 && now - aiRequestTimestamps[0] > 60_000) {
       aiRequestTimestamps.shift();
@@ -1540,6 +2179,11 @@ async function startServer() {
       ? body.otherPeopleNames
       : [];
 
+    const granularityRule =
+      cfg.aiPromptStyle.factGranularity === 'grouped'
+        ? `2. СЕМАНТИЧЕСКАЯ ГРУППИРОВКА: Очищай текст от разговорного мусора и объединяй тесно связанные детали одной темы в цельные, ёмкие формулировки (1-2 факта на абзац вместо дробления на мелочи), без местоимений в начале.`
+        : `2. АТОМАРНАЯ ДИСТИЛЛЯЦИЯ: Очищай текст от разговорного мусора («оказывается», «мы болтали», «призналась, что», переписочных приветствий и флуда). Разбивай сложные предложения на короткие, лаконичные, самодостаточные факты без местоимений в начале (например: «Отказалась от кофе», «Пьёт японскую матчу на овсяном молоке», «Аллергия на арахис и мёд»). Не создавай бессмысленных обрывков без контекста.`;
+
     const systemPrompt =
       `Ты — элитный когнитивный аналитик персонального блокнота о людях. Проанализируй заметку о человеке по имени "${personName}". Заметка может быть на русском, казахском или английском языке.\n` +
       `Текущий подзаголовок профиля: "${personSubtitle}"\n` +
@@ -1547,7 +2191,7 @@ async function startServer() {
       `Текущие колонки и ВСЕ уже известные факты:\n${JSON.stringify(existingCols, null, 2)}\n\n` +
       `Выполни 6 задач строго по правилам:\n` +
       `1. ЖЁСТКАЯ ЗАЩИТА ОТ ДУБЛИКАТОВ И СИНОНИМОВ: Никогда не возвращай факт, если аналогичная по смыслу информация УЖЕ присутствует в ЛЮБОЙ колонке existingCols — даже если она выражена синонимами или перефразирована (например: «любит / обожает / в восторге от / предпочитает / без ума от / увлекается», «не любит / ненавидит / терпеть не может / раздражает / бесит / на дух не переносит», «хочет / мечтает», «животное / питомец / кот», а также казахские и английские аналоги). Если в новом тексте нет ничего нового по сравнению с existingCols — верни пустой массив updates: [].\n` +
-      `2. АТОМАРНАЯ ДИСТИЛЛЯЦИЯ: Очищай текст от разговорного мусора («оказывается», «мы болтали», «призналась, что», переписочных приветствий и флуда). Разбивай сложные предложения на короткие, лаконичные, самодостаточные факты без местоимений в начале (например: «Отказалась от кофе», «Пьёт японскую матчу на овсяном молоке», «Аллергия на арахис и мёд»). Не создавай бессмысленных обрывков без контекста.\n` +
+      `${granularityRule}\n` +
       `3. КАТЕГОРИЗАЦИЯ И НОВЫЕ КОЛОНКИ: Распределяй факты по существующим колонкам (используй точное columnTitle и isNewColumn: false) или создавай новые лаконичные колонки (isNewColumn: true) с подходящим эмодзи icon. Оценивай смысл, а не только точные слова: выражения вроде «обожает», «тащится от», «без ума от», «ұнатады», «adores» относятся к «Нравится» или профильной категории, а «бесит», «раздражает», «на дух не переносит», «жек көреді», «can't stand» — к «Не нравится».\n` +
       `4. НЕЯВНЫЕ ВЫВОДЫ С ОБОСНОВАНИЕМ (tag: "ai_inference"): Делай умные логические выводы (если их ещё нет в existingCols!) и в поле reason кратко пиши основание.\n` +
       `5. ОБНОВЛЕНИЕ И ОБОГАЩЕНИЕ (tag: "updated"): Если новый факт отменяет старый (в том числе через синоним-антоним: было «обожает кофе» -> стало «терпеть не может кофе» / «отказалась от кофе») или уточняет краткий старый факт, ставь tag: "updated", в replacesOldFact укажи точный текст старого факта из existingCols, а в reason — причину обновления.\n` +
@@ -1663,11 +2307,12 @@ async function startServer() {
     }
 
     const lang = String(body?.lang || 'ru');
+    const verbosity = cfg.aiPromptStyle.advisorVerbosity;
     const cacheKey = buildAdvisorCacheKey({
       personName: body.person.name,
       personUpdatedAt: body.person.updatedAt,
       columns: body.person.columns,
-      question,
+      question: `${question} [style:${verbosity}]`,
       lang,
     });
 
@@ -1689,11 +2334,16 @@ async function startServer() {
       return;
     }
 
+    const verbosityRule =
+      verbosity === 'detailed'
+        ? 'Дай развёрнутый, содержательный ответ с конкретными деталями и аргументацией (6-8 строк с подпунктами).'
+        : 'Ответ оформи максимально кратко по пунктам (3-4 лаконичных строки).';
+
     const prompt =
       `Ты — умный личный ассистент по отношениям и общению. У тебя есть полное досье на человека:\n` +
       `${JSON.stringify(body.person, null, 2)}\n\n` +
       `Ответь конкретно, практично и с опорой на факты из досье на вопрос пользователя:\n«${question}»\n\n` +
-      `Если в досье есть аллергии, табу или особые привычки — обязательно учти их. Ответ оформи кратко по пунктам (3-5 строк). ${getLanguageInstruction(
+      `Если в досье есть аллергии, табу или особые привычки — обязательно учти их. ${verbosityRule} ${getLanguageInstruction(
         lang
       )}`;
 
@@ -1932,6 +2582,117 @@ async function startServer() {
       const classified = classifyGeminiError(message);
       recordAiTelemetry({
         endpoint: 'dossier',
+        latencyMs: Date.now() - reqStart,
+        promptTokens: 0,
+        candidatesTokens: 0,
+        totalTokens: 0,
+        cacheHit: false,
+        ok: false,
+        errorCode: message === 'NO_API_KEY' ? 'NO_API_KEY' : classified.errorCode,
+      });
+      if (message === 'NO_API_KEY') {
+        res.status(503).json({ errorCode: 'NO_API_KEY', error: 'Gemini key is not configured.' });
+        return;
+      }
+      res.status(classified.httpStatus).json({ errorCode: classified.errorCode, error: message });
+    }
+  });
+
+  app.post('/api/ai/greeting', async (req: Request, res: Response) => {
+    const cfg = await enforceAiAccessAndTrack(req, res);
+    if (!cfg) return;
+
+    const body = req.body as {
+      person?: { name?: string; subtitle?: string; columns?: unknown };
+      occasion?: 'birthday' | 'reconnect' | 'invite';
+      tone?: 'warm' | 'friendly' | 'formal';
+      lang?: string;
+    };
+    if (!body?.person?.name) {
+      res.status(400).json({ errorCode: 'BAD_REQUEST', error: 'person is required' });
+      return;
+    }
+
+    const occasion =
+      body.occasion === 'birthday' || body.occasion === 'invite' ? body.occasion : 'reconnect';
+    const tone =
+      body.tone === 'warm' || body.tone === 'formal' ? body.tone : 'friendly';
+    const lang = String(body.lang || 'ru');
+
+    const occasionDesc =
+      occasion === 'birthday'
+        ? 'Поздравление с днём рождения'
+        : occasion === 'invite'
+        ? 'Приглашение на встречу / событие с учётом интересов'
+        : 'Тёплое первое сообщение после долгого перерыва в общении';
+    const toneDesc =
+      tone === 'warm'
+        ? 'тёплый, душевный и искренний'
+        : tone === 'formal'
+        ? 'вежливый, уважительный и сдержанный'
+        : 'дружеский, лёгкий и живой';
+
+    const prompt =
+      `Напиши готовое короткое сообщение (3-5 предложений, без клише и лишней воды) для отправки в мессенджер.\n` +
+      `Повод: ${occasionDesc}.\n` +
+      `Тон: ${toneDesc}.\n` +
+      `Известное досье о человеке:\n${JSON.stringify(body.person, null, 2)}\n\n` +
+      `Естественно вплети 1-2 уместных факта из досье (любимые напитки/интересы/хобби), избегая всего из раздела табу/не нравится. ${getLanguageInstruction(
+        lang
+      )}`;
+
+    const reqStart = Date.now();
+    const modelSpec = getAiModelSpec(cfg.aiModelPreset);
+    try {
+      const exec = await executeGeminiWithFallback(cfg.keyRouteMode, {
+        model: modelSpec.modelId,
+        contents: prompt,
+        config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel[modelSpec.thinkingLevel] },
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              message: { type: Type.STRING },
+            },
+            required: ['message'],
+          },
+        },
+      });
+      const text = exec.response.text;
+      if (!text) {
+        recordAiTelemetry({
+          endpoint: 'greeting',
+          latencyMs: Date.now() - reqStart,
+          promptTokens: exec.promptTokens,
+          candidatesTokens: exec.candidatesTokens,
+          totalTokens: exec.totalTokens,
+          cacheHit: false,
+          ok: false,
+          slotUsed: exec.slotUsed,
+          errorCode: 'EMPTY_AI_RESPONSE',
+        });
+        res.status(502).json({ errorCode: 'EMPTY_AI_RESPONSE', error: 'Empty model response' });
+        return;
+      }
+
+      const parsed = cleanAndParseJson<{ message: string }>(text);
+      recordAiTelemetry({
+        endpoint: 'greeting',
+        latencyMs: exec.latencyMs,
+        promptTokens: exec.promptTokens,
+        candidatesTokens: exec.candidatesTokens,
+        totalTokens: exec.totalTokens,
+        cacheHit: false,
+        ok: true,
+        slotUsed: exec.slotUsed,
+      });
+      res.json({ message: String(parsed?.message || '').trim() });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Upstream Gemini error';
+      const classified = classifyGeminiError(message);
+      recordAiTelemetry({
+        endpoint: 'greeting',
         latencyMs: Date.now() - reqStart,
         promptTokens: 0,
         candidatesTokens: 0,

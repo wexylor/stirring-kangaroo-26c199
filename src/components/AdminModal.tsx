@@ -1,10 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
+  AlertTriangle,
   Bell,
   CheckCircle2,
   Cpu,
   Database,
+  Download,
   FileText,
   KeyRound,
   Lock,
@@ -12,8 +14,12 @@ import {
   MessageSquarePlus,
   RefreshCw,
   Send,
+  Server,
   ShieldCheck,
+  Sliders,
+  Smartphone,
   Trash2,
+  Upload,
   X,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
@@ -28,22 +34,35 @@ import {
   useLiveSecond,
 } from '../utils/liveClock';
 import type { AiKeyRouteMode, SlotHealthState } from '../utils/aiKeyRouter';
-import { AI_MODEL_SPECS, type AiModelPreset } from '../utils/aiPolicy';
-import type {
-  AnnouncementTone,
-  FeatureEventKey,
-  SampleContactTemplate,
+import { AI_MODEL_SPECS, parseAdminList, type AiModelPreset } from '../utils/aiPolicy';
+import {
+  createDefaultUiDefaults,
+  DEFAULT_AI_PROMPT_STYLE,
+  type AiPromptStyleConfig,
+  type AnnouncementTone,
+  type FeatureEventKey,
+  type FeedbackTicket,
+  type SampleContactTemplate,
+  type TicketTag,
+  type UiDefaultsConfig,
 } from '../utils/adminOps';
 import {
   checkAdminServerKeys,
+  clearAdminAiCache,
+  exportAdminConfigBundle,
+  exportAdminTelemetryFile,
   fetchAdminOverview,
+  importAdminConfigBundle,
+  probeAdminServicesHealth,
   setAdminKeyRouteMode,
   testAdminWebhook,
+  updateAdminAccess,
   updateAdminAnnouncement,
   updateAdminFlags,
   updateAdminPoll,
   updateAdminSampleTemplate,
   updateAdminTicket,
+  updateAdminUiDefaults,
   updateAdminWebhook,
   type AdminOverviewSnapshot,
 } from '../services/gemini';
@@ -69,6 +88,9 @@ interface AdminModalProps {
     announcement?: AdminOverviewSnapshot['announcement'];
     sampleTemplate?: SampleContactTemplate;
     poll?: AdminOverviewSnapshot['poll'];
+    aiPromptStyle?: AiPromptStyleConfig;
+    uiDefaults?: UiDefaultsConfig;
+    minClientVersion?: string;
   }) => void;
   onToast: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void;
 }
@@ -127,12 +149,42 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   const [savingWebhook, setSavingWebhook] = useState(false);
   const [testingWebhook, setTestingWebhook] = useState(false);
 
-  // Ticket replies map
+  // Admin Access form
+  const [extraUidsText, setExtraUidsText] = useState('');
+  const [extraEmailsText, setExtraEmailsText] = useState('');
+  const [savingAccess, setSavingAccess] = useState(false);
+
+  // Ticket replies map & filter
   const [ticketReplies, setTicketReplies] = useState<Record<string, string>>({});
   const [busyTicketId, setBusyTicketId] = useState<string | null>(null);
+  const [ticketFilter, setTicketFilter] = useState<'all' | 'open' | TicketTag>('all');
+
+  // New Admin Ops states
+  const [probingServices, setProbingServices] = useState(false);
+  const [clearingCache, setClearingCache] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<'csv' | 'json' | null>(null);
+  const [promptStyle, setPromptStyle] = useState<AiPromptStyleConfig>({
+    ...DEFAULT_AI_PROMPT_STYLE,
+  });
+  const [minVersionInput, setMinVersionInput] = useState('2.4.0');
+  const [uiGroupsText, setUiGroupsText] = useState('');
+  const [uiSectionsText, setUiSectionsText] = useState('');
+  const [uiPromptsText, setUiPromptsText] = useState('');
+  const [savingUiDefaults, setSavingUiDefaults] = useState(false);
+  const [digestHourUtc, setDigestHourUtc] = useState<number>(9);
+  const [backupBusy, setBackupBusy] = useState(false);
+  const configFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Live 1-second timer for server uptime + real-time key cooldown countdowns
   const liveNowMs = useLiveSecond(open);
+
+  const hydrateUiDefaultsFields = (cfg: UiDefaultsConfig) => {
+    setUiGroupsText((cfg.defaultGroups || []).join(', '));
+    setUiSectionsText(
+      (cfg.defaultSections || []).map((s) => `${s.title} | ${s.icon}`).join('\n')
+    );
+    setUiPromptsText((cfg.quickAdvisorPrompts || []).join('\n'));
+  };
 
   const hydrateFormsFromOverview = (data: AdminOverviewSnapshot) => {
     setBannerEnabled(data.announcement.enabled);
@@ -158,6 +210,16 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     );
 
     setWebhookTriggers(data.webhook.triggers);
+    setDigestHourUtc(
+      typeof data.webhook.dailyDigestHourUtc === 'number'
+        ? data.webhook.dailyDigestHourUtc
+        : 9
+    );
+    setExtraUidsText((data.extraAdminUids || []).join('\n'));
+    setExtraEmailsText((data.extraAdminEmails || []).join('\n'));
+    setPromptStyle(data.aiPromptStyle || { ...DEFAULT_AI_PROMPT_STYLE });
+    setMinVersionInput(data.minClientVersion || data.appVersion || '2.4.0');
+    hydrateUiDefaultsFields(data.uiDefaults || createDefaultUiDefaults());
   };
 
   const loadOverview = async () => {
@@ -177,6 +239,9 @@ export const AdminModal: React.FC<AdminModalProps> = ({
         announcement: data.announcement,
         sampleTemplate: data.sampleTemplate,
         poll: data.poll,
+        ...(data.aiPromptStyle ? { aiPromptStyle: data.aiPromptStyle } : {}),
+        ...(data.uiDefaults ? { uiDefaults: data.uiDefaults } : {}),
+        ...(data.minClientVersion ? { minClientVersion: data.minClientVersion } : {}),
       });
     } catch {
       onToast(t.account.adminToggleError, 'error');
@@ -460,6 +525,44 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     }
   };
 
+  const handleSaveAccess = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || savingAccess) return;
+    setSavingAccess(true);
+    try {
+      const token = await getFreshIdToken(user);
+      if (!token) throw new Error('NO_TOKEN');
+      const extraAdminUids = parseAdminList(extraUidsText).filter((v) => !v.includes('@'));
+      const extraAdminEmails = parseAdminList(extraEmailsText)
+        .filter((v) => v.includes('@'))
+        .map((v) => v.toLowerCase());
+      const res = await updateAdminAccess(token, {
+        extraAdminUids,
+        extraAdminEmails,
+      });
+      setOverview((prev) =>
+        prev
+          ? {
+              ...prev,
+              extraAdminUids: res.extraAdminUids,
+              extraAdminEmails: res.extraAdminEmails,
+            }
+          : prev
+      );
+      setExtraUidsText(res.extraAdminUids.join('\n'));
+      setExtraEmailsText(res.extraAdminEmails.join('\n'));
+      await setGlobalControlPatchInCloud(user, {
+        extraAdminUids: res.extraAdminUids,
+        extraAdminEmails: res.extraAdminEmails,
+      }).catch(() => {});
+      onToast(t.adminPanel.accessSavedToast, 'success');
+    } catch {
+      onToast(t.account.adminToggleError, 'error');
+    } finally {
+      setSavingAccess(false);
+    }
+  };
+
   const handleSaveWebhook = async (clearUrl = false) => {
     if (!user || savingWebhook) return;
     setSavingWebhook(true);
@@ -469,6 +572,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({
       const res = await updateAdminWebhook(token, {
         ...(clearUrl ? { clearUrl: true } : { webhookUrl: webhookUrlInput.trim() }),
         triggers: webhookTriggers,
+        dailyDigestHourUtc: digestHourUtc,
       });
       setOverview((prev) => (prev ? { ...prev, webhook: res.webhook } : prev));
       if (clearUrl || webhookUrlInput.trim()) {
@@ -495,6 +599,226 @@ export const AdminModal: React.FC<AdminModalProps> = ({
       onToast(t.adminPanel.webhookErrorToast, 'error');
     } finally {
       setTestingWebhook(false);
+    }
+  };
+
+  const handleProbeServices = async () => {
+    if (!user || probingServices) return;
+    setProbingServices(true);
+    try {
+      const token = await getFreshIdToken(user);
+      if (!token) throw new Error('NO_TOKEN');
+      const res = await probeAdminServicesHealth(token);
+      setOverview((prev) =>
+        prev
+          ? {
+              ...prev,
+              servicesHealth: res.servicesHealth,
+              memoryUsage: res.memoryUsage,
+              cacheStats: res.cacheStats,
+            }
+          : prev
+      );
+    } catch {
+      onToast(t.account.adminToggleError, 'error');
+    } finally {
+      setProbingServices(false);
+    }
+  };
+
+  const handleClearAiCache = async () => {
+    if (!user || clearingCache) return;
+    setClearingCache(true);
+    try {
+      const token = await getFreshIdToken(user);
+      if (!token) throw new Error('NO_TOKEN');
+      const res = await clearAdminAiCache(token);
+      setOverview((prev) => (prev ? { ...prev, cacheStats: res.cacheStats } : prev));
+      onToast(t.adminPanel.cacheClearedToast, 'success');
+    } catch {
+      onToast(t.account.adminToggleError, 'error');
+    } finally {
+      setClearingCache(false);
+    }
+  };
+
+  const handleExportTelemetry = async (format: 'csv' | 'json') => {
+    if (!user || exportingFormat) return;
+    setExportingFormat(format);
+    try {
+      const token = await getFreshIdToken(user);
+      if (!token) throw new Error('NO_TOKEN');
+      await exportAdminTelemetryFile(token, format);
+      onToast(t.adminPanel.exportedToast, 'success');
+    } catch {
+      onToast(t.account.adminToggleError, 'error');
+    } finally {
+      setExportingFormat(null);
+    }
+  };
+
+  const handleSavePromptStyle = async (nextStyle: AiPromptStyleConfig) => {
+    if (!user || savingFlags) return;
+    setSavingFlags(true);
+    try {
+      const token = await getFreshIdToken(user);
+      if (!token) throw new Error('NO_TOKEN');
+      const res = await updateAdminFlags(token, { aiPromptStyle: nextStyle });
+      const resolvedStyle = res.aiPromptStyle || nextStyle;
+      setPromptStyle(resolvedStyle);
+      setOverview((prev) =>
+        prev ? { ...prev, aiPromptStyle: resolvedStyle } : prev
+      );
+      onConfigSynced({ aiPromptStyle: resolvedStyle });
+      await setGlobalControlPatchInCloud(user, { aiPromptStyle: resolvedStyle }).catch(() => {});
+      onToast(t.adminPanel.promptStyleSavedToast, 'success');
+    } catch {
+      onToast(t.account.adminToggleError, 'error');
+    } finally {
+      setSavingFlags(false);
+    }
+  };
+
+  const handleSaveMinVersion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || savingFlags) return;
+    setSavingFlags(true);
+    try {
+      const token = await getFreshIdToken(user);
+      if (!token) throw new Error('NO_TOKEN');
+      const res = await updateAdminFlags(token, {
+        minClientVersion: minVersionInput.trim(),
+      });
+      const resolved = res.minClientVersion || minVersionInput.trim();
+      setMinVersionInput(resolved);
+      setOverview((prev) =>
+        prev ? { ...prev, minClientVersion: resolved } : prev
+      );
+      onConfigSynced({ minClientVersion: resolved });
+      await setGlobalControlPatchInCloud(user, { minClientVersion: resolved }).catch(() => {});
+      onToast(t.adminPanel.minVersionSavedToast, 'success');
+    } catch {
+      onToast(t.account.adminToggleError, 'error');
+    } finally {
+      setSavingFlags(false);
+    }
+  };
+
+  const handleSaveUiDefaults = async (reset = false) => {
+    if (!user || savingUiDefaults) return;
+    setSavingUiDefaults(true);
+    try {
+      const token = await getFreshIdToken(user);
+      if (!token) throw new Error('NO_TOKEN');
+      const defaultGroups = uiGroupsText
+        .split(/[\n,;]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const defaultSections = uiSectionsText
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const parts = line.split('|').map((s) => s.trim());
+          return {
+            title: parts[0] || '',
+            icon: parts[1] || '📌',
+          };
+        })
+        .filter((s) => s.title.length > 0);
+      const quickAdvisorPrompts = uiPromptsText
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      const res = await updateAdminUiDefaults(
+        token,
+        reset
+          ? { reset: true }
+          : { defaultGroups, defaultSections, quickAdvisorPrompts }
+      );
+      hydrateUiDefaultsFields(res.uiDefaults);
+      setOverview((prev) =>
+        prev ? { ...prev, uiDefaults: res.uiDefaults } : prev
+      );
+      onConfigSynced({ uiDefaults: res.uiDefaults });
+      await setGlobalControlPatchInCloud(user, { uiDefaults: res.uiDefaults }).catch(() => {});
+      onToast(t.adminPanel.uiDefaultsSavedToast, 'success');
+    } catch {
+      onToast(t.account.adminToggleError, 'error');
+    } finally {
+      setSavingUiDefaults(false);
+    }
+  };
+
+  const handleExportConfigBackup = async () => {
+    if (!user || backupBusy) return;
+    setBackupBusy(true);
+    try {
+      const token = await getFreshIdToken(user);
+      if (!token) throw new Error('NO_TOKEN');
+      const res = await exportAdminConfigBundle(token);
+      const json = JSON.stringify(res.bundle, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `notebook-admin-config-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      onToast(t.adminPanel.backupExportedToast, 'success');
+    } catch {
+      onToast(t.account.adminToggleError, 'error');
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const handleImportConfigBackup = (file: File) => {
+    if (!user || backupBusy) return;
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      setBackupBusy(true);
+      try {
+        const raw = JSON.parse(String(ev.target?.result || ''));
+        const bundle = raw?.bundle && typeof raw.bundle === 'object' ? raw.bundle : raw;
+        const token = await getFreshIdToken(user);
+        if (!token) throw new Error('NO_TOKEN');
+        await importAdminConfigBundle(token, bundle);
+        await loadOverview();
+        onToast(t.adminPanel.backupImportedToast, 'success');
+      } catch {
+        onToast(t.adminPanel.backupImportErrorToast, 'error');
+      } finally {
+        setBackupBusy(false);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleToggleTicketTag = async (tk: FeedbackTicket, tag: TicketTag) => {
+    if (!user || busyTicketId) return;
+    setBusyTicketId(tk.id);
+    try {
+      const token = await getFreshIdToken(user);
+      if (!token) throw new Error('NO_TOKEN');
+      const currentTags = tk.tags || [];
+      const nextTags = currentTags.includes(tag)
+        ? currentTags.filter((tg) => tg !== tag)
+        : [...currentTags, tag];
+      const res = await updateAdminTicket(token, {
+        id: tk.id,
+        action: 'update',
+        tags: nextTags,
+        reply: (ticketReplies[tk.id] ?? tk.adminReply ?? '').trim() || undefined,
+      });
+      setOverview((prev) => (prev ? { ...prev, tickets: res.tickets } : prev));
+    } catch {
+      onToast(t.account.adminToggleError, 'error');
+    } finally {
+      setBusyTicketId(null);
     }
   };
 
@@ -557,6 +881,13 @@ export const AdminModal: React.FC<AdminModalProps> = ({
       })),
     [t.adminPanel.featureLabels, overview?.telemetry.featureCounters]
   );
+
+  const filteredTickets = useMemo(() => {
+    const list = overview?.tickets || [];
+    if (ticketFilter === 'all') return list;
+    if (ticketFilter === 'open') return list.filter((tk) => tk.status === 'open');
+    return list.filter((tk) => (tk.tags || []).includes(ticketFilter));
+  }, [overview?.tickets, ticketFilter]);
 
   return (
     <AnimatePresence>
@@ -745,6 +1076,123 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                         </div>
                       </div>
                     </div>
+
+                    {/* Server Memory & AI Cache strip */}
+                    <div
+                      className="p-3 rounded-lg border flex flex-wrap items-center justify-between gap-3 text-xs"
+                      style={{
+                        backgroundColor: 'var(--bg-elevated)',
+                        borderColor: 'var(--border-color)',
+                      }}
+                    >
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                        <div>
+                          <span style={{ color: 'var(--text-muted)' }}>{t.adminPanel.ramLabel}: </span>
+                          <span className="font-mono font-semibold tabular-nums">
+                            {overview.memoryUsage?.rssMb ?? 0} MB RSS ({overview.memoryUsage?.heapUsedMb ?? 0} heap)
+                          </span>
+                        </div>
+                        <div>
+                          <span style={{ color: 'var(--text-muted)' }}>{t.adminPanel.cacheLabel}: </span>
+                          <span className="font-mono font-semibold tabular-nums">
+                            {overview.cacheStats?.advisorCacheCount ?? 0} / {overview.cacheStats?.dossierCacheCount ?? 0}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={clearingCache}
+                        onClick={handleClearAiCache}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded border text-xs font-medium hover:bg-[var(--bg-hover)] disabled:opacity-50"
+                        style={{
+                          backgroundColor: 'var(--bg-surface)',
+                          borderColor: 'var(--border-color)',
+                        }}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>
+                          {clearingCache ? t.adminPanel.clearingCacheBtn : t.adminPanel.clearCacheBtn}
+                        </span>
+                      </button>
+                    </div>
+
+                    {/* Extended Services Health */}
+                    <div
+                      className="p-3.5 rounded-lg border space-y-2.5"
+                      style={{ borderColor: 'var(--border-color)' }}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 text-xs font-semibold">
+                          <Server className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
+                          <span>{t.adminPanel.servicesTitle}</span>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={probingServices}
+                          onClick={handleProbeServices}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded border text-xs font-medium hover:bg-[var(--bg-hover)] disabled:opacity-50"
+                          style={{
+                            backgroundColor: 'var(--bg-elevated)',
+                            borderColor: 'var(--border-color)',
+                          }}
+                        >
+                          <RefreshCw className={`w-3 h-3 ${probingServices ? 'animate-spin' : ''}`} />
+                          <span>
+                            {probingServices ? t.adminPanel.probingServicesBtn : t.adminPanel.probeServicesBtn}
+                          </span>
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                        {(
+                          [
+                            {
+                              label: t.adminPanel.serviceRtdb,
+                              entry: overview.servicesHealth?.rtdb ?? {
+                                ok: overview.rtdbStatus.connected,
+                                latencyMs: overview.rtdbStatus.latencyMs,
+                              },
+                            },
+                            {
+                              label: t.adminPanel.serviceAuth,
+                              entry: overview.servicesHealth?.googleAuth ?? {
+                                ok: true,
+                                latencyMs: 0,
+                              },
+                            },
+                            {
+                              label: t.adminPanel.serviceGemini,
+                              entry: overview.servicesHealth?.gemini ?? {
+                                ok: overview.keyStatus.primaryConfigured || overview.keyStatus.backupConfigured,
+                                latencyMs:
+                                  overview.keyStatus.slots.primary.lastLatencyMs ||
+                                  overview.keyStatus.slots.backup.lastLatencyMs ||
+                                  0,
+                              },
+                            },
+                          ] as const
+                        ).map((svc) => (
+                          <div
+                            key={svc.label}
+                            className="px-3 py-2 rounded-md border flex items-center justify-between gap-2"
+                            style={{
+                              backgroundColor: 'var(--bg-elevated)',
+                              borderColor: 'var(--border-color)',
+                            }}
+                          >
+                            <span style={{ color: 'var(--text-secondary)' }}>{svc.label}</span>
+                            <span
+                              className="font-mono font-semibold tabular-nums whitespace-nowrap"
+                              style={{
+                                color: svc.entry.ok ? 'var(--success-text)' : 'var(--danger-text)',
+                              }}
+                            >
+                              {svc.entry.ok ? t.adminPanel.serviceOk : t.adminPanel.serviceFail}
+                              {svc.entry.latencyMs > 0 ? ` · ${svc.entry.latencyMs} ms` : ''}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </section>
 
                   {/* Metrics Grid */}
@@ -917,6 +1365,169 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                       </div>
                     </div>
                   </section>
+
+                  {/* Error Breakdown by Code & Activity Heatmap + Export */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                    <section
+                      className="p-4 rounded-lg border space-y-3"
+                      style={{ borderColor: 'var(--border-color)' }}
+                    >
+                      <div className="flex items-center gap-2 text-xs font-semibold">
+                        <AlertTriangle className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
+                        <span>{t.adminPanel.errorsBreakdownTitle}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        {(
+                          [
+                            {
+                              label: t.adminPanel.errQuota429,
+                              val: overview.telemetry.errorBreakdown?.quota429 ?? 0,
+                            },
+                            {
+                              label: t.adminPanel.errTimeout503,
+                              val: overview.telemetry.errorBreakdown?.timeout503 ?? 0,
+                            },
+                            {
+                              label: t.adminPanel.errAuthKey,
+                              val: overview.telemetry.errorBreakdown?.authKey ?? 0,
+                            },
+                            {
+                              label: t.adminPanel.errNetworkOther,
+                              val: overview.telemetry.errorBreakdown?.networkOther ?? 0,
+                            },
+                          ] as const
+                        ).map((errItem) => (
+                          <div
+                            key={errItem.label}
+                            className="px-3 py-2 rounded-md border flex items-center justify-between gap-2"
+                            style={{
+                              backgroundColor: 'var(--bg-elevated)',
+                              borderColor: 'var(--border-color)',
+                            }}
+                          >
+                            <span style={{ color: 'var(--text-secondary)' }}>{errItem.label}</span>
+                            <span
+                              className="font-mono font-semibold tabular-nums"
+                              style={{
+                                color: errItem.val > 0 ? 'var(--danger-text)' : 'var(--text-primary)',
+                              }}
+                            >
+                              {errItem.val}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="pt-2 border-t flex flex-wrap items-center justify-between gap-2" style={{ borderColor: 'var(--border-color)' }}>
+                        <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+                          {t.adminPanel.exportTitle}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={Boolean(exportingFormat)}
+                            onClick={() => handleExportTelemetry('csv')}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded border text-xs font-medium hover:bg-[var(--bg-hover)] disabled:opacity-50"
+                            style={{
+                              backgroundColor: 'var(--bg-elevated)',
+                              borderColor: 'var(--border-color)',
+                            }}
+                          >
+                            <Download className="w-3 h-3" />
+                            <span>{t.adminPanel.exportCsvBtn}</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={Boolean(exportingFormat)}
+                            onClick={() => handleExportTelemetry('json')}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded border text-xs font-medium hover:bg-[var(--bg-hover)] disabled:opacity-50"
+                            style={{
+                              backgroundColor: 'var(--bg-elevated)',
+                              borderColor: 'var(--border-color)',
+                            }}
+                          >
+                            <Download className="w-3 h-3" />
+                            <span>{t.adminPanel.exportJsonBtn}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section
+                      className="p-4 rounded-lg border space-y-3"
+                      style={{ borderColor: 'var(--border-color)' }}
+                    >
+                      <div className="text-xs font-semibold">{t.adminPanel.heatmapTitle}</div>
+                      {(() => {
+                        const hours = overview.telemetry.activityHeatmap?.hours || Array.from({ length: 24 }, () => 0);
+                        const weekdays = overview.telemetry.activityHeatmap?.weekdays || Array.from({ length: 7 }, () => 0);
+                        const maxHour = Math.max(1, ...hours);
+                        const maxDay = Math.max(1, ...weekdays);
+                        return (
+                          <div className="space-y-3">
+                            <div>
+                              <div className="text-[11px] mb-1.5" style={{ color: 'var(--text-muted)' }}>
+                                {t.adminPanel.heatmapHoursLabel}
+                              </div>
+                              <div className="grid grid-cols-24 gap-0.5 items-end h-12">
+                                {hours.map((count, hr) => {
+                                  const hPct = count > 0 ? Math.max(12, Math.round((count / maxHour) * 100)) : 4;
+                                  return (
+                                    <div
+                                      key={hr}
+                                      title={`${String(hr).padStart(2, '0')}:00 UTC — ${count}`}
+                                      className="rounded-t-xs transition-all"
+                                      style={{
+                                        height: `${hPct}%`,
+                                        backgroundColor: count > 0 ? 'var(--accent)' : 'var(--bg-elevated)',
+                                        opacity: count > 0 ? 0.35 + (count / maxHour) * 0.65 : 0.6,
+                                      }}
+                                    />
+                                  );
+                                })}
+                              </div>
+                              <div className="flex justify-between text-[10px] font-mono tabular-nums mt-1" style={{ color: 'var(--text-muted)' }}>
+                                <span>00</span>
+                                <span>06</span>
+                                <span>12</span>
+                                <span>18</span>
+                                <span>23</span>
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="text-[11px] mb-1.5" style={{ color: 'var(--text-muted)' }}>
+                                {t.adminPanel.heatmapWeekdaysLabel}
+                              </div>
+                              <div className="grid grid-cols-7 gap-1.5">
+                                {t.adminPanel.weekdayShort.map((dayLabel, idx) => {
+                                  const val = weekdays[idx] || 0;
+                                  const ratio = val / maxDay;
+                                  return (
+                                    <div
+                                      key={dayLabel}
+                                      className="px-1.5 py-1.5 rounded border text-center"
+                                      style={{
+                                        backgroundColor: 'var(--bg-elevated)',
+                                        borderColor: val > 0 && ratio > 0.6 ? 'var(--accent)' : 'var(--border-color)',
+                                      }}
+                                    >
+                                      <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                                        {dayLabel}
+                                      </div>
+                                      <div className="text-xs font-mono font-semibold tabular-nums mt-0.5">
+                                        {val}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </section>
+                  </div>
                 </div>
               ) : tab === 'limits' ? (
                 <div className="space-y-6">
@@ -1262,6 +1873,148 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                       )}
                   </section>
 
+                  {/* Gemini Prompt Style Switchers */}
+                  <section
+                    className="p-4 rounded-lg border space-y-3"
+                    style={{ borderColor: 'var(--border-color)' }}
+                  >
+                    <div className="flex items-center gap-2 text-xs font-semibold">
+                      <Sliders className="w-4 h-4 shrink-0" style={{ color: 'var(--text-secondary)' }} />
+                      <span>{t.adminPanel.promptStyleTitle}</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div className="space-y-1.5">
+                        <div style={{ color: 'var(--text-muted)' }}>
+                          {t.adminPanel.promptVerbosityLabel}
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {(
+                            [
+                              { id: 'concise', label: t.adminPanel.promptVerbosityConcise },
+                              { id: 'detailed', label: t.adminPanel.promptVerbosityDetailed },
+                            ] as const
+                          ).map((opt) => {
+                            const active = promptStyle.advisorVerbosity === opt.id;
+                            return (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                disabled={savingFlags}
+                                aria-pressed={active}
+                                onClick={() =>
+                                  handleSavePromptStyle({
+                                    ...promptStyle,
+                                    advisorVerbosity: opt.id,
+                                  })
+                                }
+                                className="px-2.5 py-1.5 rounded-md border text-xs font-medium transition-colors"
+                                style={
+                                  active
+                                    ? {
+                                        backgroundColor: 'var(--btn-primary-bg)',
+                                        borderColor: 'var(--btn-primary-bg)',
+                                        color: 'var(--btn-primary-text)',
+                                      }
+                                    : {
+                                        backgroundColor: 'var(--bg-elevated)',
+                                        borderColor: 'var(--border-color)',
+                                        color: 'var(--text-secondary)',
+                                      }
+                                }
+                              >
+                                {opt.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <div style={{ color: 'var(--text-muted)' }}>
+                          {t.adminPanel.promptGranularityLabel}
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {(
+                            [
+                              { id: 'atomic', label: t.adminPanel.promptGranularityAtomic },
+                              { id: 'grouped', label: t.adminPanel.promptGranularityGrouped },
+                            ] as const
+                          ).map((opt) => {
+                            const active = promptStyle.factGranularity === opt.id;
+                            return (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                disabled={savingFlags}
+                                aria-pressed={active}
+                                onClick={() =>
+                                  handleSavePromptStyle({
+                                    ...promptStyle,
+                                    factGranularity: opt.id,
+                                  })
+                                }
+                                className="px-2.5 py-1.5 rounded-md border text-xs font-medium transition-colors"
+                                style={
+                                  active
+                                    ? {
+                                        backgroundColor: 'var(--btn-primary-bg)',
+                                        borderColor: 'var(--btn-primary-bg)',
+                                        color: 'var(--btn-primary-text)',
+                                      }
+                                    : {
+                                        backgroundColor: 'var(--bg-elevated)',
+                                        borderColor: 'var(--border-color)',
+                                        color: 'var(--text-secondary)',
+                                      }
+                                }
+                              >
+                                {opt.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* Client Min Version & Soft PWA Update */}
+                  <form
+                    onSubmit={handleSaveMinVersion}
+                    className="p-4 rounded-lg border space-y-2.5"
+                    style={{ borderColor: 'var(--border-color)' }}
+                  >
+                    <div className="flex items-center gap-2 text-xs font-semibold">
+                      <Smartphone className="w-4 h-4 shrink-0" style={{ color: 'var(--text-secondary)' }} />
+                      <span>{t.adminPanel.minVersionTitle}</span>
+                    </div>
+                    <p className="text-[11.5px]" style={{ color: 'var(--text-secondary)' }}>
+                      {t.adminPanel.minVersionDesc}
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={minVersionInput}
+                        onChange={(e) => setMinVersionInput(e.target.value)}
+                        placeholder={t.adminPanel.minVersionPlaceholder}
+                        className="w-36 px-3 py-1.5 rounded-md border text-[13px] font-mono outline-none"
+                        style={{
+                          backgroundColor: 'var(--bg-input)',
+                          borderColor: 'var(--border-color)',
+                        }}
+                      />
+                      <button
+                        type="submit"
+                        disabled={savingFlags}
+                        className="px-3.5 py-1.5 rounded-md text-xs font-medium whitespace-nowrap"
+                        style={{
+                          backgroundColor: 'var(--btn-primary-bg)',
+                          color: 'var(--btn-primary-text)',
+                        }}
+                      >
+                        {t.adminPanel.minVersionSaveBtn}
+                      </button>
+                    </div>
+                  </form>
+
                   {/* Global Announcement Banner Editor */}
                   <form
                     onSubmit={handleSaveBanner}
@@ -1436,6 +2189,82 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                 </div>
               ) : tab === 'access' ? (
                 <div className="space-y-6">
+                  {/* Admin Access Control */}
+                  <form
+                    onSubmit={handleSaveAccess}
+                    className="p-4 rounded-lg border space-y-3"
+                    style={{ borderColor: 'var(--border-color)' }}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-xs font-semibold">
+                        <ShieldCheck className="w-4 h-4" style={{ color: 'var(--success-text)' }} />
+                        <span>{t.adminPanel.accessControlTitle}</span>
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={savingAccess}
+                        className="px-3 py-1 rounded text-xs font-medium disabled:opacity-50"
+                        style={{
+                          backgroundColor: 'var(--btn-primary-bg)',
+                          color: 'var(--btn-primary-text)',
+                        }}
+                      >
+                        {t.adminPanel.accessSaveBtn}
+                      </button>
+                    </div>
+                    <p className="text-[11.5px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                      {t.adminPanel.accessControlDesc}
+                    </p>
+                    {user?.uid && (
+                      <div
+                        className="px-3 py-2 rounded-md border flex flex-wrap items-center justify-between gap-2 text-xs"
+                        style={{
+                          backgroundColor: 'var(--bg-elevated)',
+                          borderColor: 'var(--border-color)',
+                        }}
+                      >
+                        <span style={{ color: 'var(--text-muted)' }}>
+                          {t.adminPanel.accessCurrentUidLabel}:
+                        </span>
+                        <span className="font-mono font-medium select-all">{user.uid}</span>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] mb-1" style={{ color: 'var(--text-muted)' }}>
+                          {t.adminPanel.accessExtraUidsLabel}
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={extraUidsText}
+                          onChange={(e) => setExtraUidsText(e.target.value)}
+                          placeholder={t.adminPanel.accessExtraUidsPlaceholder}
+                          className="w-full px-2.5 py-1.5 rounded-md border text-xs font-mono outline-none"
+                          style={{
+                            backgroundColor: 'var(--bg-input)',
+                            borderColor: 'var(--border-color)',
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] mb-1" style={{ color: 'var(--text-muted)' }}>
+                          {t.adminPanel.accessExtraEmailsLabel}
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={extraEmailsText}
+                          onChange={(e) => setExtraEmailsText(e.target.value)}
+                          placeholder={t.adminPanel.accessExtraEmailsPlaceholder}
+                          className="w-full px-2.5 py-1.5 rounded-md border text-xs font-mono outline-none"
+                          style={{
+                            backgroundColor: 'var(--bg-input)',
+                            borderColor: 'var(--border-color)',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </form>
+
                   {/* Starter Contact Template Editor */}
                   <section
                     className="p-4 rounded-lg border space-y-3"
@@ -1557,6 +2386,88 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                     </div>
                   </section>
 
+                  {/* Default Groups, Sections & Quick Advisor Prompts */}
+                  <section
+                    className="p-4 rounded-lg border space-y-3"
+                    style={{ borderColor: 'var(--border-color)' }}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-semibold">{t.adminPanel.uiDefaultsTitle}</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={savingUiDefaults}
+                          onClick={() => handleSaveUiDefaults(true)}
+                          className="px-2.5 py-1 rounded border text-xs hover:bg-[var(--bg-hover)]"
+                          style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+                        >
+                          {t.adminPanel.uiDefaultsResetBtn}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={savingUiDefaults}
+                          onClick={() => handleSaveUiDefaults(false)}
+                          className="px-3 py-1 rounded text-xs font-medium"
+                          style={{
+                            backgroundColor: 'var(--btn-primary-bg)',
+                            color: 'var(--btn-primary-text)',
+                          }}
+                        >
+                          {t.adminPanel.uiDefaultsSaveBtn}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] mb-1" style={{ color: 'var(--text-muted)' }}>
+                        {t.adminPanel.uiDefaultsGroupsLabel}
+                      </label>
+                      <input
+                        type="text"
+                        value={uiGroupsText}
+                        onChange={(e) => setUiGroupsText(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-md border text-[13px] outline-none"
+                        style={{
+                          backgroundColor: 'var(--bg-input)',
+                          borderColor: 'var(--border-color)',
+                        }}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] mb-1" style={{ color: 'var(--text-muted)' }}>
+                          {t.adminPanel.uiDefaultsSectionsLabel}
+                        </label>
+                        <textarea
+                          rows={4}
+                          value={uiSectionsText}
+                          onChange={(e) => setUiSectionsText(e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded-md border text-xs font-mono outline-none"
+                          style={{
+                            backgroundColor: 'var(--bg-input)',
+                            borderColor: 'var(--border-color)',
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] mb-1" style={{ color: 'var(--text-muted)' }}>
+                          {t.adminPanel.uiDefaultsPromptsLabel}
+                        </label>
+                        <textarea
+                          rows={4}
+                          value={uiPromptsText}
+                          onChange={(e) => setUiPromptsText(e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded-md border text-xs outline-none"
+                          style={{
+                            backgroundColor: 'var(--bg-input)',
+                            borderColor: 'var(--border-color)',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </section>
+
                   {/* Telegram / Discord / Webhook Alerts */}
                   <section
                     className="p-4 rounded-lg border space-y-3"
@@ -1640,6 +2551,28 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                       )}
                     </div>
 
+                    <div className="flex flex-wrap items-center gap-3 pt-1 text-xs">
+                      <label className="inline-flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+                        <span>{t.adminPanel.digestHourLabel}:</span>
+                        <select
+                          value={String(digestHourUtc)}
+                          onChange={(e) => setDigestHourUtc(Number(e.target.value))}
+                          className="px-2 py-1 rounded border font-mono text-xs outline-none"
+                          style={{
+                            backgroundColor: 'var(--bg-input)',
+                            borderColor: 'var(--border-color)',
+                            color: 'var(--text-primary)',
+                          }}
+                        >
+                          {Array.from({ length: 24 }, (_, hr) => (
+                            <option key={hr} value={String(hr)}>
+                              {String(hr).padStart(2, '0')}:00 UTC
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+
                     <div className="flex flex-wrap items-center gap-2 pt-1">
                       <button
                         type="button"
@@ -1673,17 +2606,103 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                       )}
                     </div>
                   </section>
+
+                  {/* 1-Click Admin Config Backup & Restore */}
+                  <section
+                    className="p-4 rounded-lg border flex flex-wrap items-center justify-between gap-3"
+                    style={{ borderColor: 'var(--border-color)' }}
+                  >
+                    <span className="text-xs font-semibold">{t.adminPanel.backupTitle}</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={backupBusy}
+                        onClick={handleExportConfigBackup}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium hover:bg-[var(--bg-hover)] disabled:opacity-50"
+                        style={{
+                          backgroundColor: 'var(--bg-elevated)',
+                          borderColor: 'var(--border-color)',
+                        }}
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>{t.adminPanel.backupExportBtn}</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={backupBusy}
+                        onClick={() => configFileInputRef.current?.click()}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium hover:bg-[var(--bg-hover)] disabled:opacity-50"
+                        style={{
+                          backgroundColor: 'var(--bg-elevated)',
+                          borderColor: 'var(--border-color)',
+                        }}
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>{t.adminPanel.backupImportBtn}</span>
+                      </button>
+                      <input
+                        ref={configFileInputRef}
+                        type="file"
+                        accept=".json,application/json"
+                        hidden
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) handleImportConfigBackup(f);
+                          e.target.value = '';
+                        }}
+                      />
+                    </div>
+                  </section>
                 </div>
               ) : (
                 <div className="space-y-6">
                   {/* Admin Feedback Inbox */}
                   <section className="space-y-2.5">
-                    <div className="flex items-center gap-2 text-xs font-semibold">
-                      <MessageSquarePlus className="w-4 h-4" />
-                      <span>{t.adminPanel.inboxTitle}</span>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-xs font-semibold">
+                        <MessageSquarePlus className="w-4 h-4" />
+                        <span>{t.adminPanel.inboxTitle}</span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1">
+                        {(
+                          [
+                            { id: 'all', label: t.adminPanel.ticketFilterAll },
+                            { id: 'open', label: t.adminPanel.ticketStatusOpen },
+                            { id: 'urgent', label: t.adminPanel.ticketTags.urgent },
+                            { id: 'in_progress', label: t.adminPanel.ticketTags.in_progress },
+                            { id: 'fixed', label: t.adminPanel.ticketTags.fixed },
+                          ] as const
+                        ).map((f) => {
+                          const active = ticketFilter === f.id;
+                          return (
+                            <button
+                              key={f.id}
+                              type="button"
+                              aria-pressed={active}
+                              onClick={() => setTicketFilter(f.id)}
+                              className="px-2 py-0.5 rounded border text-[11px] font-medium transition-colors"
+                              style={
+                                active
+                                  ? {
+                                      backgroundColor: 'var(--btn-primary-bg)',
+                                      borderColor: 'var(--btn-primary-bg)',
+                                      color: 'var(--btn-primary-text)',
+                                    }
+                                  : {
+                                      backgroundColor: 'var(--bg-elevated)',
+                                      borderColor: 'var(--border-color)',
+                                      color: 'var(--text-secondary)',
+                                    }
+                              }
+                            >
+                              {f.label}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
 
-                    {overview.tickets.length === 0 ? (
+                    {filteredTickets.length === 0 ? (
                       <div
                         className="p-4 rounded-lg border text-xs text-center"
                         style={{
@@ -1695,7 +2714,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                       </div>
                     ) : (
                       <div className="space-y-2.5">
-                        {overview.tickets.map((tk) => (
+                        {filteredTickets.map((tk) => (
                           <div
                             key={tk.id}
                             className="p-3.5 rounded-lg border space-y-2"
@@ -1745,6 +2764,71 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                             </div>
 
                             <p className="text-[13px] leading-relaxed">{tk.text}</p>
+
+                            {/* Tag toggles & 1-click canned replies */}
+                            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                              {(['urgent', 'in_progress', 'fixed'] as const).map((tg) => {
+                                const hasTag = (tk.tags || []).includes(tg);
+                                return (
+                                  <button
+                                    key={tg}
+                                    type="button"
+                                    disabled={busyTicketId === tk.id}
+                                    aria-pressed={hasTag}
+                                    onClick={() => handleToggleTicketTag(tk, tg)}
+                                    className="px-2 py-0.5 rounded border text-[11px] font-medium transition-colors"
+                                    style={
+                                      hasTag
+                                        ? {
+                                            backgroundColor:
+                                              tg === 'urgent'
+                                                ? 'var(--danger-bg)'
+                                                : tg === 'fixed'
+                                                ? 'var(--success-bg)'
+                                                : 'var(--warning-bg)',
+                                            borderColor:
+                                              tg === 'urgent'
+                                                ? 'var(--danger-border)'
+                                                : tg === 'fixed'
+                                                ? 'var(--success-border)'
+                                                : 'var(--warning-border)',
+                                            color:
+                                              tg === 'urgent'
+                                                ? 'var(--danger-text)'
+                                                : tg === 'fixed'
+                                                ? 'var(--success-text)'
+                                                : 'var(--warning-text)',
+                                          }
+                                        : {
+                                            backgroundColor: 'var(--bg-surface)',
+                                            borderColor: 'var(--border-color)',
+                                            color: 'var(--text-muted)',
+                                          }
+                                    }
+                                  >
+                                    {t.adminPanel.ticketTags[tg]}
+                                  </button>
+                                );
+                              })}
+                              <span aria-hidden="true" className="text-xs opacity-30">|</span>
+                              {t.adminPanel.cannedReplies.map((phrase) => (
+                                <button
+                                  key={phrase}
+                                  type="button"
+                                  onClick={() =>
+                                    setTicketReplies((prev) => ({ ...prev, [tk.id]: phrase }))
+                                  }
+                                  className="px-2 py-0.5 rounded border text-[11px] hover:bg-[var(--bg-hover)]"
+                                  style={{
+                                    backgroundColor: 'var(--bg-surface)',
+                                    borderColor: 'var(--border-color)',
+                                    color: 'var(--text-secondary)',
+                                  }}
+                                >
+                                  + {phrase}
+                                </button>
+                              ))}
+                            </div>
 
                             <div className="flex flex-wrap items-center gap-2 pt-1">
                               <input

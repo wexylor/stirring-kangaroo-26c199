@@ -9,6 +9,7 @@ import {
   Lock,
   Megaphone,
   CheckCircle2,
+  RefreshCw,
 } from 'lucide-react';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import type {
@@ -42,10 +43,20 @@ import {
 import type { AiKeyRouteMode } from './utils/aiKeyRouter';
 import {
   APP_VERSION,
+  createDefaultUiDefaults,
+  isClientVersionOutdated,
   type FeaturePoll,
   type GlobalAnnouncement,
   type SampleContactTemplate,
+  type UiDefaultsConfig,
+  type UserFeedbackTicketSummary,
 } from './utils/adminOps';
+import { parseVCardContacts } from './utils/importers';
+import {
+  buildLocalGreeting,
+  type GreetingOccasion,
+  type GreetingTone,
+} from './utils/greetingGenerator';
 import { useLiveMinute } from './utils/liveClock';
 import {
   detectDeviceLanguage,
@@ -91,8 +102,10 @@ import {
   analyzeTextWithGemini,
   askAdvisorWithGemini,
   buildDossierWithGemini,
+  fetchMyFeedbackTickets,
   fetchServerAiStatus,
   formatGeminiFallbackReason,
+  generateGreetingWithGemini,
   notifyNewUserRegistration,
   submitPollVote,
   submitUserFeedback,
@@ -115,6 +128,8 @@ import {
   AddPersonModal,
   ApiSettingsModal,
   ConfirmModal,
+  GreetingModal,
+  ShareTargetModal,
   SummaryModal,
 } from './components/Modals';
 import { isDocumentScrollLocked } from './utils/scrollLock';
@@ -205,6 +220,9 @@ export default function App() {
   const [guestAiEnabled, setGuestAiEnabled] = useState<boolean>(true);
   const [readOnlyMode, setReadOnlyMode] = useState<boolean>(false);
   const [serverKeyConfigured, setServerKeyConfigured] = useState<boolean>(false);
+  const [serverIsAdmin, setServerIsAdmin] = useState<boolean>(false);
+  const [extraAdminUids, setExtraAdminUids] = useState<string[]>([]);
+  const [extraAdminEmails, setExtraAdminEmails] = useState<string[]>([]);
   const [, setKeyRouteMode] = useState<AiKeyRouteMode>('auto');
   const [announcement, setAnnouncement] = useState<GlobalAnnouncement | null>(null);
   const [announcementDismissedText, setAnnouncementDismissedText] = useState<string>('');
@@ -220,6 +238,22 @@ export default function App() {
   });
   const [pollDismissedId, setPollDismissedId] = useState<string>('');
   const [votingPoll, setVotingPoll] = useState(false);
+
+  const [uiDefaults, setUiDefaults] = useState<UiDefaultsConfig>(() =>
+    createDefaultUiDefaults()
+  );
+  const [minClientVersion, setMinClientVersion] = useState<string>(APP_VERSION);
+  const [updateDismissedForVersion, setUpdateDismissedForVersion] = useState<string>('');
+  const [guestTicketIds, setGuestTicketIds] = useState<string[]>(() => {
+    try {
+      const raw = safeStorage.getItem('spn_my_ticket_ids_v1');
+      return raw ? (JSON.parse(raw) as string[]) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [myTickets, setMyTickets] = useState<UserFeedbackTicketSummary[]>([]);
+  const [loadingTickets, setLoadingTickets] = useState(false);
 
   const [activeEngine, setActiveEngine] = useState<'gemini' | 'local'>('local');
   const [cloudStatus, setCloudStatus] = useState<CloudSyncStatus>('local');
@@ -237,6 +271,29 @@ export default function App() {
   const [addColumnOpen, setAddColumnOpen] = useState(false);
   const [addMeetingOpen, setAddMeetingOpen] = useState(false);
   const [apiSettingsOpen, setApiSettingsOpen] = useState(false);
+  const [greetingOpen, setGreetingOpen] = useState(false);
+  const [shareModalState, setShareModalState] = useState<{
+    open: boolean;
+    text: string;
+    suggestedName: string;
+  }>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const isShare = params.get('share') === '1';
+      const title = (params.get('title') || '').trim();
+      const text = (params.get('text') || '').trim();
+      const url = (params.get('url') || '').trim();
+      const combined = [title, text, url].filter(Boolean).join('\n');
+      if (isShare || combined) {
+        return {
+          open: Boolean(combined),
+          text: combined,
+          suggestedName: title.slice(0, 40),
+        };
+      }
+    }
+    return { open: false, text: '', suggestedName: '' };
+  });
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [confirmState, setConfirmState] = useState<{
     open: boolean;
@@ -262,6 +319,7 @@ export default function App() {
   sampleTemplateRef.current = sampleTemplate;
   const readOnlyRef = useRef<boolean>(readOnlyMode);
   readOnlyRef.current = readOnlyMode;
+  const adminUrlHandledRef = useRef(false);
 
   const showToast = useCallback(
     (message: string, type: ToastItem['type'] = 'info') => {
@@ -300,18 +358,30 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
-    fetchServerAiStatus().then((status) => {
+    const syncStatus = async () => {
+      const idToken = currentUser ? await getFreshIdToken(currentUser) : null;
+      const status = await fetchServerAiStatus(idToken);
       if (!active) return;
       setSharedAiEnabled(status.sharedAiEnabled);
       setGuestAiEnabled(status.guestAiEnabled);
       setReadOnlyMode(status.readOnlyMode);
       setServerKeyConfigured(status.serverKeyConfigured);
+      setServerIsAdmin(Boolean(status.isAdmin));
       if (status.keyRouteMode) setKeyRouteMode(status.keyRouteMode);
       if (status.announcement) setAnnouncement(status.announcement);
       if (status.sampleTemplate) setSampleTemplate(status.sampleTemplate);
       if (status.poll) setPoll(status.poll);
-    });
+      if (status.uiDefaults) setUiDefaults(status.uiDefaults);
+      if (status.minClientVersion) setMinClientVersion(status.minClientVersion);
+    };
+    void syncStatus();
+    return () => {
+      active = false;
+    };
+  }, [currentUser, authRevision]);
 
+  useEffect(() => {
+    let active = true;
     let unsubGlobalAi: (() => void) | null = null;
     try {
       unsubGlobalAi = subscribeGlobalAiConfig(
@@ -320,10 +390,14 @@ export default function App() {
           setSharedAiEnabled(cfg.sharedAiEnabled);
           setGuestAiEnabled(cfg.guestAiEnabled);
           setReadOnlyMode(cfg.readOnlyMode);
+          setExtraAdminUids(cfg.extraAdminUids || []);
+          setExtraAdminEmails(cfg.extraAdminEmails || []);
           if (cfg.keyRouteMode) setKeyRouteMode(cfg.keyRouteMode);
           if (cfg.announcement) setAnnouncement(cfg.announcement);
           if (cfg.sampleTemplate) setSampleTemplate(cfg.sampleTemplate);
           if (cfg.poll) setPoll(cfg.poll);
+          if (cfg.uiDefaults) setUiDefaults(cfg.uiDefaults);
+          if (cfg.minClientVersion) setMinClientVersion(cfg.minClientVersion);
         },
         () => {
           // If appConfig isn't readable yet in RTDB rules, keep server status
@@ -338,6 +412,29 @@ export default function App() {
       unsubGlobalAi?.();
     };
   }, []);
+
+  const effectiveIsAdmin = useMemo(() => {
+    if (!currentUser) return false;
+    if (isAdminUser(currentUser) || serverIsAdmin) return true;
+    if (extraAdminUids.includes(currentUser.uid)) return true;
+    if (
+      currentUser.emailVerified &&
+      currentUser.email &&
+      extraAdminEmails.includes(currentUser.email.trim().toLowerCase())
+    ) {
+      return true;
+    }
+    return false;
+  }, [currentUser, serverIsAdmin, extraAdminUids, extraAdminEmails]);
+
+  useEffect(() => {
+    if (!effectiveIsAdmin || adminUrlHandledRef.current || typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('admin') === '1') {
+      adminUrlHandledRef.current = true;
+      setAdminModalOpen(true);
+    }
+  }, [effectiveIsAdmin]);
 
   useEffect(() => {
     setCloudWriteBlockedByReadOnly(readOnlyMode);
@@ -559,11 +656,29 @@ export default function App() {
     return res;
   }, [currentUser]);
 
+  useEffect(() => {
+    if (!accountOpen) return;
+    let active = true;
+    setLoadingTickets(true);
+    (async () => {
+      try {
+        const token = currentUser ? await getFreshIdToken(currentUser) : null;
+        const list = await fetchMyFeedbackTickets(token, guestTicketIds);
+        if (active) setMyTickets(list);
+      } finally {
+        if (active) setLoadingTickets(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [accountOpen, currentUser, guestTicketIds]);
+
   const handleSubmitFeedback = useCallback(
     async (type: 'bug' | 'idea', text: string) => {
       try {
         const token = currentUser ? await getFreshIdToken(currentUser) : null;
-        await submitUserFeedback(
+        const res = await submitUserFeedback(
           {
             type,
             text,
@@ -573,6 +688,14 @@ export default function App() {
           },
           token
         );
+        setGuestTicketIds((prev) => {
+          const next = Array.from(new Set([res.ticketId, ...prev])).slice(0, 30);
+          safeStorage.setItem('spn_my_ticket_ids_v1', JSON.stringify(next));
+          return next;
+        });
+        if (res.ticket) {
+          setMyTickets((prev) => [res.ticket!, ...prev.filter((tk) => tk.id !== res.ticket!.id)]);
+        }
         showToast(tRef.current.account.feedbackSentToast, 'success');
       } catch (err) {
         showToast(tRef.current.account.feedbackErrorToast, 'error');
@@ -823,6 +946,24 @@ export default function App() {
     [activePersonId, currentScope]
   );
 
+  const buildInitialColumnsForPerson = () => {
+    const sections =
+      uiDefaults.defaultSections && uiDefaults.defaultSections.length > 0
+        ? uiDefaults.defaultSections
+        : [
+            { title: 'Нравится', icon: '❤️' },
+            { title: 'Не нравится', icon: '👎' },
+            { title: 'Увлечения', icon: '🎯' },
+          ];
+    return sections.map((sec) => ({
+      id: uid('col'),
+      title: sec.title,
+      icon: sec.icon,
+      isNew: false,
+      facts: [],
+    }));
+  };
+
   const handleCreatePerson = (
     name: string,
     subtitle: string,
@@ -844,11 +985,7 @@ export default function App() {
       contactIntervalDays: 30,
       updatedAt: nowIso,
       lastContactAt: nowIso,
-      columns: [
-        { id: uid('col'), title: 'Нравится', icon: '❤️', isNew: false, facts: [] },
-        { id: uid('col'), title: 'Не нравится', icon: '👎', isNew: false, facts: [] },
-        { id: uid('col'), title: 'Увлечения', icon: '🎯', isNew: false, facts: [] },
-      ],
+      columns: buildInitialColumnsForPerson(),
       rawNotes: [],
       meetings: [],
     };
@@ -965,20 +1102,23 @@ export default function App() {
     showToast(t.toasts.meetingDeleted, 'info');
   };
 
-  const handleAnalyzeText = async () => {
+  const runAnalysisForPerson = async (
+    targetPerson: Person,
+    rawInput: string,
+    allContacts: Person[]
+  ) => {
     if (readOnlyRef.current) {
       showToast(tRef.current.readOnly.blockedActionToast, 'warning');
       return;
     }
-    if (!activePerson || isAnalyzing) return;
-    const rawText = draftText.trim();
+    const rawText = rawInput.trim();
     if (!rawText) {
       showToast(t.toasts.enterText, 'warning');
       return;
     }
 
     setIsAnalyzing(true);
-    const snapshotBefore: Person = JSON.parse(JSON.stringify(activePerson));
+    const snapshotBefore: Person = JSON.parse(JSON.stringify(targetPerson));
     let result: AnalysisResultPayload;
     let engineUsed: 'gemini' | 'local' = 'gemini';
     let usedFallback = false;
@@ -997,7 +1137,7 @@ export default function App() {
         throw new Error(policy.reason || 'NO_API_KEY');
       }
       const idToken = currentUser ? await getFreshIdToken(currentUser) : null;
-      result = await analyzeTextWithGemini(activePerson, rawText, people, idToken);
+      result = await analyzeTextWithGemini(targetPerson, rawText, allContacts, idToken);
       engineUsed = 'gemini';
       trackFeatureUsage('ai_analyze');
     } catch (err) {
@@ -1018,14 +1158,14 @@ export default function App() {
         fallbackReason = reasonMsg;
         showToast(reasonMsg, 'warning');
       }
-      result = analyzeTextLocally(activePerson, rawText, people, lang);
+      result = analyzeTextLocally(targetPerson, rawText, allContacts, lang);
       trackFeatureUsage('local_analyze');
     }
 
     setActiveEngine(engineUsed);
 
     const nowIso = new Date().toISOString();
-    const updatedPerson: Person = JSON.parse(JSON.stringify(activePerson));
+    const updatedPerson: Person = JSON.parse(JSON.stringify(targetPerson));
     updatedPerson.columns.forEach((col) => {
       col.isNew = false;
       col.facts.forEach((f) => {
@@ -1172,11 +1312,11 @@ export default function App() {
       updatedAt: nowIso,
     });
 
-    updateSinglePerson(activePerson.id, () => updatedPerson);
+    updateSinglePerson(targetPerson.id, () => updatedPerson);
     setIsAnalyzing(false);
     setDraftText('');
     setLastReport({
-      personId: activePerson.id,
+      personId: targetPerson.id,
       factsAdded,
       newColsCount,
       inferencesCount,
@@ -1201,6 +1341,11 @@ export default function App() {
         'info'
       );
     }
+  };
+
+  const handleAnalyzeText = async () => {
+    if (!activePerson || isAnalyzing) return;
+    await runAnalysisForPerson(activePerson, draftText, people);
   };
 
   const handleUndoAnalysis = () => {
@@ -1366,6 +1511,125 @@ export default function App() {
     showToast(t.toasts.jsonExported, 'success');
   };
 
+  const handleGenerateGreeting = async (
+    occasion: GreetingOccasion,
+    tone: GreetingTone
+  ): Promise<string> => {
+    if (!activePerson) return '';
+    try {
+      const policy = shouldUseCloudAi({
+        preferenceMode: analyzerMode,
+        isOnline: navigator.onLine,
+        sharedAiEnabled,
+        serverKeyConfigured,
+        isGuest: !currentUser,
+        guestAiEnabled,
+      });
+      if (!policy.useCloud) {
+        throw new Error(policy.reason || 'NO_API_KEY');
+      }
+      const idToken = currentUser ? await getFreshIdToken(currentUser) : null;
+      const text = await generateGreetingWithGemini(
+        activePerson,
+        occasion,
+        tone,
+        lang,
+        idToken
+      );
+      setActiveEngine('gemini');
+      return text;
+    } catch (err) {
+      const errCode = err instanceof Error ? err.message : '';
+      if (errCode && errCode !== 'NO_API_KEY' && errCode !== 'LOCAL_ONLY_MODE') {
+        showToast(formatGeminiFallbackReason(err, lang), 'warning');
+      }
+      return buildLocalGreeting({ person: activePerson, occasion, tone, lang });
+    }
+  };
+
+  const clearShareUrlParams = () => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    let changed = false;
+    for (const k of ['share', 'title', 'text', 'url']) {
+      if (url.searchParams.has(k)) {
+        url.searchParams.delete(k);
+        changed = true;
+      }
+    }
+    if (changed) {
+      window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+    }
+  };
+
+  const handleShareTargetSubmit = async (
+    targetPersonId: string | 'new',
+    newName: string,
+    sharedText: string
+  ) => {
+    setShareModalState({ open: false, text: '', suggestedName: '' });
+    clearShareUrlParams();
+
+    if (readOnlyRef.current) {
+      showToast(tRef.current.readOnly.blockedActionToast, 'warning');
+      return;
+    }
+
+    if (targetPersonId === 'new') {
+      const nowIso = new Date().toISOString();
+      const createdPerson: Person = {
+        id: uid('person'),
+        name: newName,
+        subtitle: t.common.personalCard,
+        colorId: 'emerald',
+        group: uiDefaults.defaultGroups[0] || 'Друзья',
+        isPinned: false,
+        contactIntervalDays: 30,
+        updatedAt: nowIso,
+        lastContactAt: nowIso,
+        columns: buildInitialColumnsForPerson(),
+        rawNotes: [],
+        meetings: [],
+      };
+      const nextPeople = [...people, createdPerson];
+      setPeople(nextPeople);
+      setActivePersonId(createdPerson.id);
+      persistLocalSnapshot(nextPeople, createdPerson.id, currentScope);
+      if (currentUser) {
+        pushPersonUpdate(createdPerson, currentUser.uid);
+      }
+      const lines = sharedText.split(/\r?\n/);
+      const cleanedSharedText =
+        lines.length > 1 && lines[0].trim().toLowerCase() === newName.trim().toLowerCase()
+          ? lines.slice(1).join('\n').trim()
+          : sharedText;
+      await runAnalysisForPerson(createdPerson, cleanedSharedText || sharedText, nextPeople);
+      return;
+    }
+
+    const existing = people.find((p) => p.id === targetPersonId);
+    if (existing) {
+      setActivePersonId(existing.id);
+      await runAnalysisForPerson(existing, sharedText, people);
+    }
+  };
+
+  const handleApplyPwaUpdate = async () => {
+    try {
+      if (typeof caches !== 'undefined') {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.update().catch(() => r.unregister())));
+      }
+    } catch {
+      // ignore
+    }
+    window.location.reload();
+  };
+
   const handleImportJsonFile = (file: File) => {
     if (readOnlyRef.current) {
       showToast(tRef.current.readOnly.blockedActionToast, 'warning');
@@ -1374,7 +1638,80 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = async (ev) => {
       try {
-        const parsed = JSON.parse(String(ev.target?.result || ''));
+        const content = String(ev.target?.result || '');
+        if (file.name.toLowerCase().endsWith('.vcf') || content.includes('BEGIN:VCARD')) {
+          const parsedCards = parseVCardContacts(content);
+          if (parsedCards.length === 0) {
+            showToast(t.toasts.vcardEmpty, 'warning');
+            return;
+          }
+          const nowIso = new Date().toISOString();
+          const importedCards: Person[] = parsedCards.map((card, cardIdx) => {
+            const colsMap = new Map<string, Person['columns'][number]>();
+            for (const sec of uiDefaults.defaultSections) {
+              const title = sec.title.trim();
+              if (!title) continue;
+              colsMap.set(title.toLowerCase(), {
+                id: uid('col'),
+                title,
+                icon: sec.icon || '📌',
+                isNew: false,
+                facts: [],
+              });
+            }
+            for (const f of card.facts) {
+              const key = f.columnTitle.trim().toLowerCase();
+              let col = colsMap.get(key);
+              if (!col) {
+                col = {
+                  id: uid('col'),
+                  title: f.columnTitle,
+                  icon: f.icon || '📌',
+                  isNew: true,
+                  facts: [],
+                };
+                colsMap.set(key, col);
+              }
+              col.facts.push({
+                id: uid('fact'),
+                text: f.text,
+                isNew: true,
+                tag: 'fact',
+                reason: '',
+                prevText: '',
+              });
+            }
+            return {
+              id: uid('person'),
+              name: card.name,
+              subtitle: card.subtitle || t.common.personalCard,
+              colorId: ['violet', 'blue', 'emerald', 'amber', 'rose', 'cyan'][(peopleRef.current.length + cardIdx) % 6],
+              group: card.group || uiDefaults.defaultGroups[0] || 'Друзья',
+              isPinned: false,
+              contactIntervalDays: 30,
+              updatedAt: nowIso,
+              lastContactAt: nowIso,
+              columns: Array.from(colsMap.values()),
+              rawNotes: [],
+              meetings: [],
+            };
+          });
+          const nextPeople = [...peopleRef.current, ...importedCards];
+          const nextActive = importedCards[0].id;
+          setPeople(nextPeople);
+          setActivePersonId(nextActive);
+          setLastReport(null);
+          persistLocalSnapshot(nextPeople, nextActive, currentScope);
+          if (currentUser) {
+            for (const c of importedCards) {
+              await pushPersonUpdate(c, currentUser.uid);
+            }
+          }
+          showToast(t.toasts.vcardImported(importedCards.length), 'success');
+          return;
+        }
+
+        const parsed = JSON.parse(content);
         if (!parsed || !Array.isArray(parsed.people)) {
           throw new Error('INVALID_JSON');
         }
@@ -1444,6 +1781,8 @@ export default function App() {
     addColumnOpen ||
     addMeetingOpen ||
     apiSettingsOpen ||
+    greetingOpen ||
+    shareModalState.open ||
     confirmState.open ||
     summaryOpen;
 
@@ -1566,6 +1905,9 @@ export default function App() {
             onImportJsonFile={handleImportJsonFile}
             onManualSync={handleManualSync}
             onExportReminderCalendar={handleExportReminderCalendar}
+            defaultGroups={uiDefaults.defaultGroups}
+            isAdmin={effectiveIsAdmin}
+            onOpenAdminPanel={() => setAdminModalOpen(true)}
           />
 
           <div
@@ -1635,6 +1977,45 @@ export default function App() {
                 <span>{t.readOnly.bannerTitle}</span>
               </div>
             )}
+
+            {isClientVersionOutdated(APP_VERSION, minClientVersion) &&
+              updateDismissedForVersion !== minClientVersion && (
+                <div
+                  role="status"
+                  className="px-4 py-2 border-b text-xs font-medium flex flex-wrap items-center justify-between gap-2.5"
+                  style={{
+                    backgroundColor: 'var(--bg-elevated)',
+                    borderColor: 'var(--border-hover)',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <RefreshCw className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--accent)' }} />
+                    <span>{t.pwa.updateBannerText(minClientVersion)}</span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleApplyPwaUpdate}
+                      className="px-2.5 py-1 rounded text-xs font-semibold hover:opacity-90"
+                      style={{
+                        backgroundColor: 'var(--btn-primary-bg)',
+                        color: 'var(--btn-primary-text)',
+                      }}
+                    >
+                      {t.pwa.updateNowBtn}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={t.common.closeNotice}
+                      onClick={() => setUpdateDismissedForVersion(minClientVersion)}
+                      className="p-0.5 rounded opacity-70 hover:opacity-100"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
 
             {announcement?.enabled &&
               announcement.text.trim() &&
@@ -1833,6 +2214,7 @@ export default function App() {
                 >
                 <ProfileCard
                   person={activePerson}
+                  defaultGroups={uiDefaults.defaultGroups}
                   onRename={(newName) =>
                     updateSinglePerson(activePerson.id, (p) => ({
                       ...p,
@@ -1869,6 +2251,7 @@ export default function App() {
                     }))
                   }
                   onOpenDossier={() => handleOpenSummary('single')}
+                  onOpenGreeting={() => setGreetingOpen(true)}
                   onOpenAddColumn={() => setAddColumnOpen(true)}
                   onOpenAddMeeting={() => setAddMeetingOpen(true)}
                   onDeduplicate={() => {
@@ -1893,6 +2276,7 @@ export default function App() {
                   advisorQuery={advisorQuery}
                   advisorAnswer={advisorAnswer}
                   isAskingAdvisor={isAskingAdvisor}
+                  quickQuestions={uiDefaults.quickAdvisorPrompts}
                   onDraftChange={setDraftText}
                   onFillDemo={() =>
                     setDraftText(sampleTemplate?.demoNoteText || DEMO_SAMPLE_TEXT)
@@ -1908,6 +2292,12 @@ export default function App() {
                     trackFeatureUsage('chat_clean');
                     showToast(t.toasts.chatCleanedToast, 'info');
                   }}
+                  onChatImported={(count) =>
+                    showToast(t.toasts.chatImported(count), 'success')
+                  }
+                  onChatImportError={() =>
+                    showToast(t.toasts.chatImportInvalid, 'error')
+                  }
                 />
 
                 <ColumnsGrid
@@ -2073,12 +2463,14 @@ export default function App() {
             authRevision={authRevision}
             pendingCount={pendingCount}
             isSyncing={isSyncing}
-            isAdmin={isAdminUser(currentUser)}
+            isAdmin={effectiveIsAdmin}
             onOpenAdminPanel={() => {
               setAccountOpen(false);
               setAdminModalOpen(true);
             }}
             onSubmitFeedback={handleSubmitFeedback}
+            myTickets={myTickets}
+            loadingTickets={loadingTickets}
             onClose={() => setAccountOpen(false)}
             onRefreshAccount={handleRefreshAccountStatus}
             onManualSync={handleManualSync}
@@ -2135,6 +2527,12 @@ export default function App() {
               if (patch.poll) {
                 setPoll(patch.poll);
               }
+              if (patch.uiDefaults) {
+                setUiDefaults(patch.uiDefaults);
+              }
+              if (patch.minClientVersion) {
+                setMinClientVersion(patch.minClientVersion);
+              }
             }}
             onToast={showToast}
           />
@@ -2150,12 +2548,14 @@ export default function App() {
 
           <AddPersonModal
             open={addPersonOpen}
+            defaultGroups={uiDefaults.defaultGroups}
             onClose={() => setAddPersonOpen(false)}
             onCreate={handleCreatePerson}
           />
 
           <AddColumnModal
             open={addColumnOpen}
+            defaultSections={uiDefaults.defaultSections}
             onClose={() => setAddColumnOpen(false)}
             onCreate={handleAddColumn}
           />
@@ -2218,6 +2618,27 @@ export default function App() {
               URL.revokeObjectURL(url);
               showToast(t.toasts.txtDownloaded, 'success');
             }}
+          />
+
+          <GreetingModal
+            open={greetingOpen}
+            person={activePerson}
+            canUseAi={activeEngine === 'gemini'}
+            onClose={() => setGreetingOpen(false)}
+            onGenerateAi={handleGenerateGreeting}
+            onCopy={copyText}
+          />
+
+          <ShareTargetModal
+            open={shareModalState.open}
+            people={people}
+            initialText={shareModalState.text}
+            suggestedNewName={shareModalState.suggestedName}
+            onClose={() => {
+              setShareModalState({ open: false, text: '', suggestedName: '' });
+              clearShareUrlParams();
+            }}
+            onSubmit={handleShareTargetSubmit}
           />
           </motion.div>
         )}
