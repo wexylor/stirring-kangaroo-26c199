@@ -48,6 +48,7 @@ import {
   APP_VERSION,
   createDefaultUiDefaults,
   isClientVersionOutdated,
+  shouldFallbackToDirectRtdb,
   type FeaturePoll,
   type GlobalAnnouncement,
   type SampleContactTemplate,
@@ -86,6 +87,7 @@ import {
 import { createDefaultSampleState, DEMO_SAMPLE_TEXT } from './data/sampleData';
 import {
   deletePersonFromCloud,
+  fetchMyFeedbackTicketsFromRtdb,
   getFreshIdToken,
   getUserDisplayLabel,
   isAdminUser,
@@ -94,6 +96,7 @@ import {
   reloadFirebaseUser,
   savePersonToCloud,
   setCloudWriteBlockedByReadOnly,
+  submitFeedbackTicketToRtdb,
   subscribeAuthChanges,
   subscribeGlobalAiConfig,
   subscribeUserPeople,
@@ -693,8 +696,16 @@ export default function App() {
     (async () => {
       try {
         const token = currentUser ? await getFreshIdToken(currentUser) : null;
-        const list = await fetchMyFeedbackTickets(token, guestTicketIds);
+        let list: UserFeedbackTicketSummary[];
+        try {
+          list = await fetchMyFeedbackTickets(token, guestTicketIds);
+        } catch (err) {
+          if (!shouldFallbackToDirectRtdb(err)) throw err;
+          list = await fetchMyFeedbackTicketsFromRtdb(currentUser?.uid, guestTicketIds);
+        }
         if (active) setMyTickets(list);
+      } catch {
+        if (active) setMyTickets([]);
       } finally {
         if (active) setLoadingTickets(false);
       }
@@ -708,16 +719,20 @@ export default function App() {
     async (type: 'bug' | 'idea', text: string) => {
       try {
         const token = currentUser ? await getFreshIdToken(currentUser) : null;
-        const res = await submitUserFeedback(
-          {
-            type,
-            text,
-            lang,
-            authorLabel: currentUser ? getUserDisplayLabel(currentUser) : tRef.current.common.guest,
-            appVersion: APP_VERSION,
-          },
-          token
-        );
+        const payload = {
+          type,
+          text,
+          lang,
+          authorLabel: currentUser ? getUserDisplayLabel(currentUser) : tRef.current.common.guest,
+          appVersion: APP_VERSION,
+        };
+        let res: { ticketId: string; ticket?: UserFeedbackTicketSummary };
+        try {
+          res = await submitUserFeedback(payload, token);
+        } catch (err) {
+          if (!shouldFallbackToDirectRtdb(err)) throw err;
+          res = await submitFeedbackTicketToRtdb(payload, currentUser);
+        }
         setGuestTicketIds((prev) => {
           const next = Array.from(new Set([res.ticketId, ...prev])).slice(0, 30);
           safeStorage.setItem('spn_my_ticket_ids_v1', JSON.stringify(next));

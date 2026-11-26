@@ -21,6 +21,7 @@ import {
 } from '@firebase/auth';
 import {
   getDatabase,
+  get,
   ref,
   set,
   update,
@@ -33,10 +34,27 @@ import type { Person } from '../types/notebook';
 import { normalizePeople } from '../utils/storage';
 import {
   ADMIN_UID,
+  getAiModelSpec,
   isAdminUid,
   parseGlobalAiConfig,
+  resolveAiModelPreset,
   type GlobalAiConfig,
 } from '../utils/aiPolicy';
+import { resolveAiKeyRouteMode } from '../utils/aiKeyRouter';
+import {
+  APP_VERSION,
+  DEFAULT_AI_PROMPT_STYLE,
+  computeEndpointStats,
+  computeErrorBreakdown,
+  createDefaultSampleTemplate,
+  createDefaultUiDefaults,
+  createEmptyActivityHeatmap,
+  createEmptyFeatureCounters,
+  normalizeTicketsCollection,
+  sanitizeConfigBackupBundle,
+  type FeedbackTicket,
+} from '../utils/adminOps';
+import type { AdminOverviewSnapshot } from './gemini';
 
 export const firebaseConfig = {
   apiKey: 'AIzaSyCZzb83vFUDEruoR4KMFBG-7CVnyBwkRDc',
@@ -430,3 +448,236 @@ export async function setGlobalAiKeyRouteInCloud(
 ): Promise<void> {
   await setGlobalControlPatchInCloud(user, { keyRouteMode });
 }
+
+export async function fetchAdminSnapshotFromRtdb(): Promise<AdminOverviewSnapshot> {
+  const { db } = getFirebaseServices();
+  const startMs = Date.now();
+  const [aiSnap, ticketsSnap] = await Promise.all([
+    get(ref(db, 'appConfig/aiSettings')),
+    get(ref(db, 'appConfig/tickets')).catch(() => null),
+  ]);
+  const latencyMs = Math.max(1, Date.now() - startMs);
+
+  const rawAi = aiSnap.exists() ? aiSnap.val() : null;
+  const parsed = parseGlobalAiConfig(rawAi);
+  const rawObj = (rawAi && typeof rawAi === 'object' ? rawAi : {}) as {
+    dailyDigestHourUtc?: unknown;
+  };
+  const hourRaw = Number(rawObj.dailyDigestHourUtc);
+  const dailyDigestHourUtc =
+    Number.isFinite(hourRaw) && hourRaw >= 0 && hourRaw <= 23 ? Math.floor(hourRaw) : 18;
+
+  const tickets = ticketsSnap && ticketsSnap.exists()
+    ? normalizeTicketsCollection(ticketsSnap.val())
+    : [];
+
+  const routeMode = resolveAiKeyRouteMode(parsed.keyRouteMode);
+  const modelPreset = resolveAiModelPreset(parsed.aiModelPreset);
+  const nowIso = new Date().toISOString();
+  const openTickets = tickets.filter((tk) => tk.status === 'open').length;
+
+  return {
+    appVersion: APP_VERSION,
+    minClientVersion: parsed.minClientVersion || APP_VERSION,
+    serverStartedAtMs: Date.now(),
+    serverNowMs: Date.now(),
+    geminiModel: getAiModelSpec(modelPreset).modelId,
+    rtdbStatus: {
+      connected: true,
+      latencyMs,
+    },
+    servicesHealth: {
+      checkedAt: nowIso,
+      rtdb: { ok: true, latencyMs, detail: 'RTDB Direct' },
+      googleAuth: { ok: true, latencyMs: 0, detail: 'Firebase SDK' },
+      gemini: { ok: false, latencyMs: 0, detail: 'Server API unavailable' },
+    },
+    flags: {
+      sharedAiEnabled: parsed.sharedAiEnabled,
+      guestAiEnabled: parsed.guestAiEnabled,
+      readOnlyMode: parsed.readOnlyMode,
+      keyRouteMode: routeMode,
+      aiModelPreset: modelPreset,
+    },
+    aiPromptStyle: parsed.aiPromptStyle || { ...DEFAULT_AI_PROMPT_STYLE },
+    uiDefaults: parsed.uiDefaults || createDefaultUiDefaults(),
+    keyStatus: {
+      primaryConfigured: false,
+      backupConfigured: false,
+      anyKeyConfigured: false,
+      routeMode,
+      effectiveSlot: null,
+      slots: {
+        primary: { configured: false, health: 'untested', cooldownRemainingSec: 0, cooldownUntilMs: 0 },
+        backup: { configured: false, health: 'untested', cooldownRemainingSec: 0, cooldownUntilMs: 0 },
+      },
+    },
+    telemetry: {
+      totalRequests: 0,
+      avgLatencyMs: 0,
+      totalTokens: 0,
+      advisorCacheHits: 0,
+      dossierCacheHits: 0,
+      dossierRebuildCount: 0,
+      tokensSavedEstimate: 0,
+      endpointStats: computeEndpointStats([]),
+      errorBreakdown: computeErrorBreakdown([]),
+      activityHeatmap: { ...createEmptyActivityHeatmap(), totalCount: 0 },
+      recentRequests: [],
+      featureCounters: createEmptyFeatureCounters(),
+      dailyDigest: {
+        dateKey: nowIso.slice(0, 10),
+        activeVisitors: 0,
+        aiRequests: 0,
+        aiErrors: 0,
+        cacheHits: 0,
+        tokensSavedEstimate: 0,
+        openTickets,
+      },
+    },
+    announcement: parsed.announcement || { enabled: false, text: '', tone: 'info' },
+    sampleTemplate: parsed.sampleTemplate || createDefaultSampleTemplate(),
+    poll: parsed.poll || { id: 'default-poll', enabled: false, question: '', options: [] },
+    extraAdminUids: parsed.extraAdminUids || [],
+    extraAdminEmails: parsed.extraAdminEmails || [],
+    tickets,
+    webhook: {
+      configured: false,
+      triggers: {
+        onInvalidKey: true,
+        onQuotaExceeded: true,
+        onTrafficSpike: true,
+        onNewUser: false,
+        onNewTicket: true,
+        dailyDigestEnabled: false,
+      },
+      dailyDigestHourUtc,
+    },
+    events: [],
+  };
+}
+
+export async function saveAdminTicketsMapToRtdb(tickets: FeedbackTicket[]): Promise<void> {
+  const { db } = getFirebaseServices();
+  const mapObj: Record<string, FeedbackTicket> = {};
+  for (const tk of tickets.slice(0, 100)) {
+    mapObj[tk.id] = JSON.parse(JSON.stringify(tk));
+  }
+  await set(ref(db, 'appConfig/tickets'), mapObj);
+}
+
+export async function exportAdminBundleFromRtdb(): Promise<Record<string, unknown>> {
+  const { db } = getFirebaseServices();
+  const [aiSnap, ticketsSnap] = await Promise.all([
+    get(ref(db, 'appConfig/aiSettings')),
+    get(ref(db, 'appConfig/tickets')).catch(() => null),
+  ]);
+  return {
+    exportedAt: new Date().toISOString(),
+    appVersion: APP_VERSION,
+    aiSettings: aiSnap.exists() ? aiSnap.val() : {},
+    tickets: ticketsSnap && ticketsSnap.exists() ? normalizeTicketsCollection(ticketsSnap.val()) : [],
+  };
+}
+
+export async function importAdminBundleToRtdb(user: User, rawBundle: unknown): Promise<void> {
+  const { aiSettings, tickets } = sanitizeConfigBackupBundle(rawBundle);
+  await setGlobalControlPatchInCloud(user, aiSettings);
+  if (tickets) {
+    await saveAdminTicketsMapToRtdb(tickets);
+  }
+}
+
+export async function submitFeedbackTicketToRtdb(
+  payload: {
+    type: 'bug' | 'idea';
+    text: string;
+    lang: string;
+    authorLabel: string;
+    appVersion: string;
+  },
+  user: User | null
+): Promise<{
+  ticketId: string;
+  ticket: {
+    id: string;
+    type: 'bug' | 'idea';
+    text: string;
+    status: 'open' | 'resolved';
+    tags?: FeedbackTicket['tags'];
+    createdAt: string;
+    resolvedAt?: string;
+    adminReply?: string;
+  };
+}> {
+  const { db } = getFirebaseServices();
+  const ticketId = `tkt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+  const ticket: FeedbackTicket = {
+    id: ticketId,
+    type: payload.type === 'idea' ? 'idea' : 'bug',
+    text: payload.text.trim().slice(0, 800),
+    authorLabel: payload.authorLabel.trim().slice(0, 60) || 'Гость',
+    ...(user?.uid ? { authorUid: user.uid } : {}),
+    isGuest: !user,
+    lang: payload.lang.slice(0, 8),
+    appVersion: payload.appVersion.slice(0, 20),
+    status: 'open',
+    tags: [],
+    createdAt: new Date().toISOString(),
+  };
+  await set(ref(db, `appConfig/tickets/${ticketId}`), JSON.parse(JSON.stringify(ticket)));
+  return {
+    ticketId,
+    ticket: {
+      id: ticket.id,
+      type: ticket.type,
+      text: ticket.text,
+      status: ticket.status,
+      tags: ticket.tags,
+      createdAt: ticket.createdAt,
+    },
+  };
+}
+
+export async function fetchMyFeedbackTicketsFromRtdb(
+  uid?: string | null,
+  guestTicketIds: string[] = []
+): Promise<
+  Array<{
+    id: string;
+    type: 'bug' | 'idea';
+    text: string;
+    status: 'open' | 'resolved';
+    tags?: FeedbackTicket['tags'];
+    createdAt: string;
+    resolvedAt?: string;
+    adminReply?: string;
+  }>
+> {
+  try {
+    const { db } = getFirebaseServices();
+    const snap = await get(ref(db, 'appConfig/tickets'));
+    if (!snap.exists()) return [];
+    const list = normalizeTicketsCollection(snap.val());
+    return list
+      .filter((tk) => {
+        if (uid && tk.authorUid === uid) return true;
+        if (tk.isGuest && guestTicketIds.includes(tk.id)) return true;
+        return false;
+      })
+      .map((tk) => ({
+        id: tk.id,
+        type: tk.type,
+        text: tk.text,
+        status: tk.status,
+        tags: tk.tags,
+        createdAt: tk.createdAt,
+        resolvedAt: tk.resolvedAt,
+        adminReply: tk.adminReply,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+

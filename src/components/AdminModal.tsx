@@ -34,10 +34,15 @@ import {
   useLiveSecond,
 } from '../utils/liveClock';
 import type { AiKeyRouteMode, SlotHealthState } from '../utils/aiKeyRouter';
-import { AI_MODEL_SPECS, parseAdminList, type AiModelPreset } from '../utils/aiPolicy';
+import { AI_MODEL_SPECS, getAiModelSpec, parseAdminList, type AiModelPreset } from '../utils/aiPolicy';
 import {
+  applyAdminTicketMutation,
+  createDefaultSampleTemplate,
   createDefaultUiDefaults,
   DEFAULT_AI_PROMPT_STYLE,
+  sanitizeUiDefaults,
+  sanitizeVersionString,
+  shouldFallbackToDirectRtdb,
   type AiPromptStyleConfig,
   type AnnouncementTone,
   type FeatureEventKey,
@@ -67,7 +72,11 @@ import {
   type AdminOverviewSnapshot,
 } from '../services/gemini';
 import {
+  exportAdminBundleFromRtdb,
+  fetchAdminSnapshotFromRtdb,
   getFreshIdToken,
+  importAdminBundleToRtdb,
+  saveAdminTicketsMapToRtdb,
   setGlobalControlPatchInCloud,
 } from '../services/firebase';
 import { DEFAULT_GROUPS } from '../data/sampleData';
@@ -108,6 +117,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   const [tab, setTab] = useState<AdminTab>('overview');
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string>('');
+  const [rtdbDirectMode, setRtdbDirectMode] = useState(false);
   const [overview, setOverview] = useState<AdminOverviewSnapshot | null>(null);
   const [pwaStatusText, setPwaStatusText] = useState<string>('Browser');
 
@@ -235,19 +245,29 @@ export const AdminModal: React.FC<AdminModalProps> = ({
       if (!token) throw new Error('NO_TOKEN');
 
       let data: AdminOverviewSnapshot;
+      let usedRtdbDirect = false;
       try {
-        data = await fetchAdminOverview(token);
-      } catch (firstErr) {
-        const msg = firstErr instanceof Error ? firstErr.message : '';
-        if (msg === 'HTTP_401' || msg === 'HTTP_403' || msg === 'UNAUTHORIZED') {
-          const refreshedToken = await getFreshIdToken(user, true);
-          if (!refreshedToken) throw firstErr;
-          data = await fetchAdminOverview(refreshedToken);
-        } else {
-          throw firstErr;
+        try {
+          data = await fetchAdminOverview(token);
+        } catch (firstErr) {
+          const msg = firstErr instanceof Error ? firstErr.message : '';
+          if (msg === 'HTTP_401' || msg === 'HTTP_403' || msg === 'UNAUTHORIZED') {
+            const refreshedToken = await getFreshIdToken(user, true);
+            if (!refreshedToken) throw firstErr;
+            data = await fetchAdminOverview(refreshedToken);
+          } else {
+            throw firstErr;
+          }
         }
+      } catch (apiErr) {
+        if (!shouldFallbackToDirectRtdb(apiErr)) {
+          throw apiErr;
+        }
+        data = await fetchAdminSnapshotFromRtdb();
+        usedRtdbDirect = true;
       }
 
+      setRtdbDirectMode(usedRtdbDirect);
       setOverview(data);
       hydrateFormsFromOverview(data);
       onConfigSynced({
@@ -323,19 +343,39 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     if (!user || !overview || savingFlags || overview.flags.aiModelPreset === preset) return;
     setSavingFlags(true);
     try {
-      const token = await getFreshIdToken(user);
-      if (!token) throw new Error('NO_TOKEN');
-      const res = await updateAdminFlags(token, { aiModelPreset: preset });
+      const modelId = getAiModelSpec(preset).modelId;
+      if (!rtdbDirectMode) {
+        try {
+          const token = await getFreshIdToken(user);
+          if (!token) throw new Error('NO_TOKEN');
+          const res = await updateAdminFlags(token, { aiModelPreset: preset });
+          setOverview((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  geminiModel: res.geminiModel,
+                  flags: { ...prev.flags, ...res.flags },
+                }
+              : prev
+          );
+          await setGlobalControlPatchInCloud(user, { aiModelPreset: preset }).catch(() => {});
+          onToast(t.adminPanel.modelSavedToast, 'success');
+          return;
+        } catch (err) {
+          if (!shouldFallbackToDirectRtdb(err)) throw err;
+          setRtdbDirectMode(true);
+        }
+      }
+      await setGlobalControlPatchInCloud(user, { aiModelPreset: preset });
       setOverview((prev) =>
         prev
           ? {
               ...prev,
-              geminiModel: res.geminiModel,
-              flags: { ...prev.flags, ...res.flags },
+              geminiModel: modelId,
+              flags: { ...prev.flags, aiModelPreset: preset },
             }
           : prev
       );
-      await setGlobalControlPatchInCloud(user, { aiModelPreset: preset }).catch(() => {});
       onToast(t.adminPanel.modelSavedToast, 'success');
     } catch {
       onToast(t.account.adminToggleError, 'error');
@@ -351,19 +391,33 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     if (!user || !overview || savingFlags) return;
     setSavingFlags(true);
     try {
-      const token = await getFreshIdToken(user);
-      if (!token) throw new Error('NO_TOKEN');
-      const res = await updateAdminFlags(token, { [key]: nextVal });
+      if (!rtdbDirectMode) {
+        try {
+          const token = await getFreshIdToken(user);
+          if (!token) throw new Error('NO_TOKEN');
+          const res = await updateAdminFlags(token, { [key]: nextVal });
+          setOverview((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  flags: { ...prev.flags, ...res.flags },
+                }
+              : prev
+          );
+          onConfigSynced(res.flags);
+          await setGlobalControlPatchInCloud(user, { [key]: nextVal }).catch(() => {});
+          onToast(t.common.save + ': OK', 'success');
+          return;
+        } catch (err) {
+          if (!shouldFallbackToDirectRtdb(err)) throw err;
+          setRtdbDirectMode(true);
+        }
+      }
+      await setGlobalControlPatchInCloud(user, { [key]: nextVal });
       setOverview((prev) =>
-        prev
-          ? {
-              ...prev,
-              flags: { ...prev.flags, ...res.flags },
-            }
-          : prev
+        prev ? { ...prev, flags: { ...prev.flags, [key]: nextVal } } : prev
       );
-      onConfigSynced(res.flags);
-      await setGlobalControlPatchInCloud(user, { [key]: nextVal }).catch(() => {});
+      onConfigSynced({ [key]: nextVal });
       onToast(t.common.save + ': OK', 'success');
     } catch {
       onToast(t.account.adminToggleError, 'error');
@@ -376,23 +430,43 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     if (!user || updatingRoute) return;
     setUpdatingRoute(true);
     try {
-      const token = await getFreshIdToken(user);
-      if (!token) throw new Error('NO_TOKEN');
-      const res = await setAdminKeyRouteMode(token, routeMode);
+      if (!rtdbDirectMode) {
+        try {
+          const token = await getFreshIdToken(user);
+          if (!token) throw new Error('NO_TOKEN');
+          const res = await setAdminKeyRouteMode(token, routeMode);
+          setOverview((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  flags: { ...prev.flags, keyRouteMode: routeMode },
+                  keyStatus: res.status,
+                }
+              : prev
+          );
+          onConfigSynced({
+            keyRouteMode: routeMode,
+            serverKeyConfigured: res.serverKeyConfigured,
+          });
+          await setGlobalControlPatchInCloud(user, { keyRouteMode: routeMode }).catch(() => {});
+          onToast(t.account.adminKeyRouteSaved, 'success');
+          return;
+        } catch (err) {
+          if (!shouldFallbackToDirectRtdb(err)) throw err;
+          setRtdbDirectMode(true);
+        }
+      }
+      await setGlobalControlPatchInCloud(user, { keyRouteMode: routeMode });
       setOverview((prev) =>
         prev
           ? {
               ...prev,
               flags: { ...prev.flags, keyRouteMode: routeMode },
-              keyStatus: res.status,
+              keyStatus: { ...prev.keyStatus, routeMode },
             }
           : prev
       );
-      onConfigSynced({
-        keyRouteMode: routeMode,
-        serverKeyConfigured: res.serverKeyConfigured,
-      });
-      await setGlobalControlPatchInCloud(user, { keyRouteMode: routeMode }).catch(() => {});
+      onConfigSynced({ keyRouteMode: routeMode });
       onToast(t.account.adminKeyRouteSaved, 'success');
     } catch {
       onToast(t.account.adminKeyRouteError, 'error');
@@ -403,6 +477,10 @@ export const AdminModal: React.FC<AdminModalProps> = ({
 
   const handlePingGemini = async () => {
     if (!user || checkingKeys) return;
+    if (rtdbDirectMode) {
+      onToast(t.adminPanel.serverOnlyActionToast, 'warning');
+      return;
+    }
     setCheckingKeys(true);
     try {
       const token = await getFreshIdToken(user);
@@ -416,8 +494,13 @@ export const AdminModal: React.FC<AdminModalProps> = ({
         anyHealthy ? t.account.adminKeysCheckedOk : t.account.adminKeysCheckedMissing,
         anyHealthy ? 'success' : 'warning'
       );
-    } catch {
-      onToast(t.account.adminKeysCheckError, 'error');
+    } catch (err) {
+      if (shouldFallbackToDirectRtdb(err)) {
+        setRtdbDirectMode(true);
+        onToast(t.adminPanel.serverOnlyActionToast, 'warning');
+      } else {
+        onToast(t.account.adminKeysCheckError, 'error');
+      }
     } finally {
       setCheckingKeys(false);
     }
@@ -428,17 +511,30 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     if (!user || savingBanner) return;
     setSavingBanner(true);
     try {
-      const token = await getFreshIdToken(user);
-      if (!token) throw new Error('NO_TOKEN');
       const payload = {
         enabled: bannerEnabled,
         tone: bannerTone,
         text: bannerText.trim(),
       };
-      const res = await updateAdminAnnouncement(token, payload);
-      setOverview((prev) => (prev ? { ...prev, announcement: res.announcement } : prev));
-      onConfigSynced({ announcement: res.announcement });
-      await setGlobalControlPatchInCloud(user, { announcement: res.announcement }).catch(() => {});
+      if (!rtdbDirectMode) {
+        try {
+          const token = await getFreshIdToken(user);
+          if (!token) throw new Error('NO_TOKEN');
+          const res = await updateAdminAnnouncement(token, payload);
+          setOverview((prev) => (prev ? { ...prev, announcement: res.announcement } : prev));
+          onConfigSynced({ announcement: res.announcement });
+          await setGlobalControlPatchInCloud(user, { announcement: res.announcement }).catch(() => {});
+          onToast(t.adminPanel.bannerSavedToast, 'success');
+          return;
+        } catch (err) {
+          if (!shouldFallbackToDirectRtdb(err)) throw err;
+          setRtdbDirectMode(true);
+        }
+      }
+      const nextAnnouncement = { ...payload, updatedAt: new Date().toISOString() };
+      await setGlobalControlPatchInCloud(user, { announcement: nextAnnouncement });
+      setOverview((prev) => (prev ? { ...prev, announcement: nextAnnouncement } : prev));
+      onConfigSynced({ announcement: nextAnnouncement });
       onToast(t.adminPanel.bannerSavedToast, 'success');
     } catch {
       onToast(t.account.adminToggleError, 'error');
@@ -452,8 +548,6 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     if (!user || savingPoll) return;
     setSavingPoll(true);
     try {
-      const token = await getFreshIdToken(user);
-      if (!token) throw new Error('NO_TOKEN');
       const existingOptions = overview?.poll.options || [];
       const lines = pollOptionsText
         .split('\n')
@@ -472,16 +566,41 @@ export const AdminModal: React.FC<AdminModalProps> = ({
         };
       });
 
-      const res = await updateAdminPoll(token, {
-        enabled: pollEnabled,
+      if (!rtdbDirectMode) {
+        try {
+          const token = await getFreshIdToken(user);
+          if (!token) throw new Error('NO_TOKEN');
+          const res = await updateAdminPoll(token, {
+            enabled: pollEnabled,
+            question: pollQuestion.trim(),
+            options,
+            resetVotes: pollResetVotes,
+          });
+          setOverview((prev) => (prev ? { ...prev, poll: res.poll } : prev));
+          onConfigSynced({ poll: res.poll });
+          setPollResetVotes(false);
+          await setGlobalControlPatchInCloud(user, { poll: res.poll }).catch(() => {});
+          onToast(t.adminPanel.pollSavedToast, 'success');
+          return;
+        } catch (err) {
+          if (!shouldFallbackToDirectRtdb(err)) throw err;
+          setRtdbDirectMode(true);
+        }
+      }
+      const nextPoll = {
+        id:
+          pollResetVotes || !overview?.poll?.id
+            ? `poll_${Date.now().toString(36)}`
+            : overview.poll.id,
+        enabled: Boolean(pollEnabled && pollQuestion.trim() && options.length >= 2),
         question: pollQuestion.trim(),
         options,
-        resetVotes: pollResetVotes,
-      });
-      setOverview((prev) => (prev ? { ...prev, poll: res.poll } : prev));
-      onConfigSynced({ poll: res.poll });
+        updatedAt: new Date().toISOString(),
+      };
+      await setGlobalControlPatchInCloud(user, { poll: nextPoll });
+      setOverview((prev) => (prev ? { ...prev, poll: nextPoll } : prev));
+      onConfigSynced({ poll: nextPoll });
       setPollResetVotes(false);
-      await setGlobalControlPatchInCloud(user, { poll: res.poll }).catch(() => {});
       onToast(t.adminPanel.pollSavedToast, 'success');
     } catch {
       onToast(t.account.adminToggleError, 'error');
@@ -494,8 +613,6 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     if (!user || savingTpl) return;
     setSavingTpl(true);
     try {
-      const token = await getFreshIdToken(user);
-      if (!token) throw new Error('NO_TOKEN');
       const facts = tplFactsLines
         .split('\n')
         .map((line) => line.trim())
@@ -512,32 +629,43 @@ export const AdminModal: React.FC<AdminModalProps> = ({
         })
         .filter((f) => f.text.length > 0);
 
-      const res = await updateAdminSampleTemplate(
-        token,
-        reset
-          ? { reset: true }
-          : {
-              name: tplName.trim() || 'Алина',
-              subtitle: tplSubtitle.trim(),
-              group: tplGroup,
-              demoNoteText: tplNote.trim(),
-              facts,
-            }
-      );
-      setOverview((prev) => (prev ? { ...prev, sampleTemplate: res.sampleTemplate } : prev));
-      setTplName(res.sampleTemplate.name);
-      setTplSubtitle(res.sampleTemplate.subtitle);
-      setTplGroup(res.sampleTemplate.group);
-      setTplNote(res.sampleTemplate.demoNoteText);
+      const candidateTemplate: SampleContactTemplate = reset
+        ? createDefaultSampleTemplate()
+        : {
+            name: tplName.trim() || 'Алина',
+            subtitle: tplSubtitle.trim(),
+            group: tplGroup,
+            demoNoteText: tplNote.trim(),
+            facts: facts.length > 0 ? facts : createDefaultSampleTemplate().facts,
+          };
+
+      let resolvedTemplate = candidateTemplate;
+      if (!rtdbDirectMode) {
+        try {
+          const token = await getFreshIdToken(user);
+          if (!token) throw new Error('NO_TOKEN');
+          const res = await updateAdminSampleTemplate(
+            token,
+            reset ? { reset: true } : candidateTemplate
+          );
+          resolvedTemplate = res.sampleTemplate;
+        } catch (err) {
+          if (!shouldFallbackToDirectRtdb(err)) throw err;
+          setRtdbDirectMode(true);
+        }
+      }
+      await setGlobalControlPatchInCloud(user, { sampleTemplate: resolvedTemplate });
+      setOverview((prev) => (prev ? { ...prev, sampleTemplate: resolvedTemplate } : prev));
+      setTplName(resolvedTemplate.name);
+      setTplSubtitle(resolvedTemplate.subtitle);
+      setTplGroup(resolvedTemplate.group);
+      setTplNote(resolvedTemplate.demoNoteText);
       setTplFactsLines(
-        res.sampleTemplate.facts
+        resolvedTemplate.facts
           .map((f) => `${f.columnTitle} | ${f.icon} | ${f.text}`)
           .join('\n')
       );
-      onConfigSynced({ sampleTemplate: res.sampleTemplate });
-      await setGlobalControlPatchInCloud(user, { sampleTemplate: res.sampleTemplate }).catch(
-        () => {}
-      );
+      onConfigSynced({ sampleTemplate: resolvedTemplate });
       onToast(t.adminPanel.templateSavedToast, 'success');
     } catch {
       onToast(t.account.adminToggleError, 'error');
@@ -551,13 +679,27 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     if (!user || savingAccess) return;
     setSavingAccess(true);
     try {
-      const token = await getFreshIdToken(user);
-      if (!token) throw new Error('NO_TOKEN');
-      const extraAdminUids = parseAdminList(extraUidsText).filter((v) => !v.includes('@'));
-      const extraAdminEmails = parseAdminList(extraEmailsText)
+      let extraAdminUids = parseAdminList(extraUidsText).filter((v) => !v.includes('@'));
+      let extraAdminEmails = parseAdminList(extraEmailsText)
         .filter((v) => v.includes('@'))
         .map((v) => v.toLowerCase());
-      const res = await updateAdminAccess(token, {
+
+      if (!rtdbDirectMode) {
+        try {
+          const token = await getFreshIdToken(user);
+          if (!token) throw new Error('NO_TOKEN');
+          const res = await updateAdminAccess(token, {
+            extraAdminUids,
+            extraAdminEmails,
+          });
+          extraAdminUids = res.extraAdminUids;
+          extraAdminEmails = res.extraAdminEmails;
+        } catch (err) {
+          if (!shouldFallbackToDirectRtdb(err)) throw err;
+          setRtdbDirectMode(true);
+        }
+      }
+      await setGlobalControlPatchInCloud(user, {
         extraAdminUids,
         extraAdminEmails,
       });
@@ -565,17 +707,13 @@ export const AdminModal: React.FC<AdminModalProps> = ({
         prev
           ? {
               ...prev,
-              extraAdminUids: res.extraAdminUids,
-              extraAdminEmails: res.extraAdminEmails,
+              extraAdminUids,
+              extraAdminEmails,
             }
           : prev
       );
-      setExtraUidsText(res.extraAdminUids.join('\n'));
-      setExtraEmailsText(res.extraAdminEmails.join('\n'));
-      await setGlobalControlPatchInCloud(user, {
-        extraAdminUids: res.extraAdminUids,
-        extraAdminEmails: res.extraAdminEmails,
-      }).catch(() => {});
+      setExtraUidsText(extraAdminUids.join('\n'));
+      setExtraEmailsText(extraAdminEmails.join('\n'));
       onToast(t.adminPanel.accessSavedToast, 'success');
     } catch {
       onToast(t.account.adminToggleError, 'error');
@@ -586,6 +724,10 @@ export const AdminModal: React.FC<AdminModalProps> = ({
 
   const handleSaveWebhook = async (clearUrl = false) => {
     if (!user || savingWebhook) return;
+    if (rtdbDirectMode) {
+      onToast(t.adminPanel.serverOnlyActionToast, 'warning');
+      return;
+    }
     setSavingWebhook(true);
     try {
       const token = await getFreshIdToken(user);
@@ -600,8 +742,13 @@ export const AdminModal: React.FC<AdminModalProps> = ({
         setWebhookUrlInput('');
       }
       onToast(t.adminPanel.webhookSavedToast, 'success');
-    } catch {
-      onToast(t.adminPanel.webhookErrorToast, 'error');
+    } catch (err) {
+      if (shouldFallbackToDirectRtdb(err)) {
+        setRtdbDirectMode(true);
+        onToast(t.adminPanel.serverOnlyActionToast, 'warning');
+      } else {
+        onToast(t.adminPanel.webhookErrorToast, 'error');
+      }
     } finally {
       setSavingWebhook(false);
     }
@@ -609,6 +756,10 @@ export const AdminModal: React.FC<AdminModalProps> = ({
 
   const handleTestWebhook = async (kind: 'test' | 'digest') => {
     if (!user || testingWebhook) return;
+    if (rtdbDirectMode) {
+      onToast(t.adminPanel.serverOnlyActionToast, 'warning');
+      return;
+    }
     setTestingWebhook(true);
     try {
       const token = await getFreshIdToken(user);
@@ -616,8 +767,13 @@ export const AdminModal: React.FC<AdminModalProps> = ({
       const res = await testAdminWebhook(token, kind);
       setOverview((prev) => (prev ? { ...prev, webhook: res.webhook } : prev));
       onToast(t.adminPanel.webhookTestOkToast, 'success');
-    } catch {
-      onToast(t.adminPanel.webhookErrorToast, 'error');
+    } catch (err) {
+      if (shouldFallbackToDirectRtdb(err)) {
+        setRtdbDirectMode(true);
+        onToast(t.adminPanel.serverOnlyActionToast, 'warning');
+      } else {
+        onToast(t.adminPanel.webhookErrorToast, 'error');
+      }
     } finally {
       setTestingWebhook(false);
     }
@@ -625,6 +781,10 @@ export const AdminModal: React.FC<AdminModalProps> = ({
 
   const handleProbeServices = async () => {
     if (!user || probingServices) return;
+    if (rtdbDirectMode) {
+      await loadOverview();
+      return;
+    }
     setProbingServices(true);
     try {
       const token = await getFreshIdToken(user);
@@ -640,8 +800,13 @@ export const AdminModal: React.FC<AdminModalProps> = ({
             }
           : prev
       );
-    } catch {
-      onToast(t.account.adminToggleError, 'error');
+    } catch (err) {
+      if (shouldFallbackToDirectRtdb(err)) {
+        setRtdbDirectMode(true);
+        onToast(t.adminPanel.serverOnlyActionToast, 'warning');
+      } else {
+        onToast(t.account.adminToggleError, 'error');
+      }
     } finally {
       setProbingServices(false);
     }
@@ -649,6 +814,10 @@ export const AdminModal: React.FC<AdminModalProps> = ({
 
   const handleClearAiCache = async () => {
     if (!user || clearingCache) return;
+    if (rtdbDirectMode) {
+      onToast(t.adminPanel.serverOnlyActionToast, 'warning');
+      return;
+    }
     setClearingCache(true);
     try {
       const token = await getFreshIdToken(user);
@@ -656,8 +825,13 @@ export const AdminModal: React.FC<AdminModalProps> = ({
       const res = await clearAdminAiCache(token);
       setOverview((prev) => (prev ? { ...prev, cacheStats: res.cacheStats } : prev));
       onToast(t.adminPanel.cacheClearedToast, 'success');
-    } catch {
-      onToast(t.account.adminToggleError, 'error');
+    } catch (err) {
+      if (shouldFallbackToDirectRtdb(err)) {
+        setRtdbDirectMode(true);
+        onToast(t.adminPanel.serverOnlyActionToast, 'warning');
+      } else {
+        onToast(t.account.adminToggleError, 'error');
+      }
     } finally {
       setClearingCache(false);
     }
@@ -665,14 +839,23 @@ export const AdminModal: React.FC<AdminModalProps> = ({
 
   const handleExportTelemetry = async (format: 'csv' | 'json') => {
     if (!user || exportingFormat) return;
+    if (rtdbDirectMode) {
+      onToast(t.adminPanel.serverOnlyActionToast, 'warning');
+      return;
+    }
     setExportingFormat(format);
     try {
       const token = await getFreshIdToken(user);
       if (!token) throw new Error('NO_TOKEN');
       await exportAdminTelemetryFile(token, format);
       onToast(t.adminPanel.exportedToast, 'success');
-    } catch {
-      onToast(t.account.adminToggleError, 'error');
+    } catch (err) {
+      if (shouldFallbackToDirectRtdb(err)) {
+        setRtdbDirectMode(true);
+        onToast(t.adminPanel.serverOnlyActionToast, 'warning');
+      } else {
+        onToast(t.account.adminToggleError, 'error');
+      }
     } finally {
       setExportingFormat(null);
     }
@@ -682,16 +865,24 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     if (!user || savingFlags) return;
     setSavingFlags(true);
     try {
-      const token = await getFreshIdToken(user);
-      if (!token) throw new Error('NO_TOKEN');
-      const res = await updateAdminFlags(token, { aiPromptStyle: nextStyle });
-      const resolvedStyle = res.aiPromptStyle || nextStyle;
+      let resolvedStyle = nextStyle;
+      if (!rtdbDirectMode) {
+        try {
+          const token = await getFreshIdToken(user);
+          if (!token) throw new Error('NO_TOKEN');
+          const res = await updateAdminFlags(token, { aiPromptStyle: nextStyle });
+          resolvedStyle = res.aiPromptStyle || nextStyle;
+        } catch (err) {
+          if (!shouldFallbackToDirectRtdb(err)) throw err;
+          setRtdbDirectMode(true);
+        }
+      }
+      await setGlobalControlPatchInCloud(user, { aiPromptStyle: resolvedStyle });
       setPromptStyle(resolvedStyle);
       setOverview((prev) =>
         prev ? { ...prev, aiPromptStyle: resolvedStyle } : prev
       );
       onConfigSynced({ aiPromptStyle: resolvedStyle });
-      await setGlobalControlPatchInCloud(user, { aiPromptStyle: resolvedStyle }).catch(() => {});
       onToast(t.adminPanel.promptStyleSavedToast, 'success');
     } catch {
       onToast(t.account.adminToggleError, 'error');
@@ -705,18 +896,26 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     if (!user || savingFlags) return;
     setSavingFlags(true);
     try {
-      const token = await getFreshIdToken(user);
-      if (!token) throw new Error('NO_TOKEN');
-      const res = await updateAdminFlags(token, {
-        minClientVersion: minVersionInput.trim(),
-      });
-      const resolved = res.minClientVersion || minVersionInput.trim();
+      let resolved = sanitizeVersionString(minVersionInput.trim());
+      if (!rtdbDirectMode) {
+        try {
+          const token = await getFreshIdToken(user);
+          if (!token) throw new Error('NO_TOKEN');
+          const res = await updateAdminFlags(token, {
+            minClientVersion: minVersionInput.trim(),
+          });
+          resolved = res.minClientVersion || resolved;
+        } catch (err) {
+          if (!shouldFallbackToDirectRtdb(err)) throw err;
+          setRtdbDirectMode(true);
+        }
+      }
+      await setGlobalControlPatchInCloud(user, { minClientVersion: resolved });
       setMinVersionInput(resolved);
       setOverview((prev) =>
         prev ? { ...prev, minClientVersion: resolved } : prev
       );
       onConfigSynced({ minClientVersion: resolved });
-      await setGlobalControlPatchInCloud(user, { minClientVersion: resolved }).catch(() => {});
       onToast(t.adminPanel.minVersionSavedToast, 'success');
     } catch {
       onToast(t.account.adminToggleError, 'error');
@@ -729,8 +928,6 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     if (!user || savingUiDefaults) return;
     setSavingUiDefaults(true);
     try {
-      const token = await getFreshIdToken(user);
-      if (!token) throw new Error('NO_TOKEN');
       const defaultGroups = uiGroupsText
         .split(/[\n,;]+/)
         .map((s) => s.trim())
@@ -752,18 +949,32 @@ export const AdminModal: React.FC<AdminModalProps> = ({
         .map((s) => s.trim())
         .filter(Boolean);
 
-      const res = await updateAdminUiDefaults(
-        token,
-        reset
-          ? { reset: true }
-          : { defaultGroups, defaultSections, quickAdvisorPrompts }
-      );
-      hydrateUiDefaultsFields(res.uiDefaults);
+      let resolvedUiDefaults = reset
+        ? createDefaultUiDefaults()
+        : sanitizeUiDefaults({ defaultGroups, defaultSections, quickAdvisorPrompts });
+
+      if (!rtdbDirectMode) {
+        try {
+          const token = await getFreshIdToken(user);
+          if (!token) throw new Error('NO_TOKEN');
+          const res = await updateAdminUiDefaults(
+            token,
+            reset
+              ? { reset: true }
+              : { defaultGroups, defaultSections, quickAdvisorPrompts }
+          );
+          resolvedUiDefaults = res.uiDefaults;
+        } catch (err) {
+          if (!shouldFallbackToDirectRtdb(err)) throw err;
+          setRtdbDirectMode(true);
+        }
+      }
+      await setGlobalControlPatchInCloud(user, { uiDefaults: resolvedUiDefaults });
+      hydrateUiDefaultsFields(resolvedUiDefaults);
       setOverview((prev) =>
-        prev ? { ...prev, uiDefaults: res.uiDefaults } : prev
+        prev ? { ...prev, uiDefaults: resolvedUiDefaults } : prev
       );
-      onConfigSynced({ uiDefaults: res.uiDefaults });
-      await setGlobalControlPatchInCloud(user, { uiDefaults: res.uiDefaults }).catch(() => {});
+      onConfigSynced({ uiDefaults: resolvedUiDefaults });
       onToast(t.adminPanel.uiDefaultsSavedToast, 'success');
     } catch {
       onToast(t.account.adminToggleError, 'error');
@@ -776,10 +987,22 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     if (!user || backupBusy) return;
     setBackupBusy(true);
     try {
-      const token = await getFreshIdToken(user);
-      if (!token) throw new Error('NO_TOKEN');
-      const res = await exportAdminConfigBundle(token);
-      const json = JSON.stringify(res.bundle, null, 2);
+      let bundle: Record<string, unknown>;
+      if (!rtdbDirectMode) {
+        try {
+          const token = await getFreshIdToken(user);
+          if (!token) throw new Error('NO_TOKEN');
+          const res = await exportAdminConfigBundle(token);
+          bundle = res.bundle;
+        } catch (err) {
+          if (!shouldFallbackToDirectRtdb(err)) throw err;
+          setRtdbDirectMode(true);
+          bundle = await exportAdminBundleFromRtdb();
+        }
+      } else {
+        bundle = await exportAdminBundleFromRtdb();
+      }
+      const json = JSON.stringify(bundle, null, 2);
       const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -805,9 +1028,19 @@ export const AdminModal: React.FC<AdminModalProps> = ({
       try {
         const raw = JSON.parse(String(ev.target?.result || ''));
         const bundle = raw?.bundle && typeof raw.bundle === 'object' ? raw.bundle : raw;
-        const token = await getFreshIdToken(user);
-        if (!token) throw new Error('NO_TOKEN');
-        await importAdminConfigBundle(token, bundle);
+        if (!rtdbDirectMode) {
+          try {
+            const token = await getFreshIdToken(user);
+            if (!token) throw new Error('NO_TOKEN');
+            await importAdminConfigBundle(token, bundle);
+          } catch (err) {
+            if (!shouldFallbackToDirectRtdb(err)) throw err;
+            setRtdbDirectMode(true);
+            await importAdminBundleToRtdb(user, bundle);
+          }
+        } else {
+          await importAdminBundleToRtdb(user, bundle);
+        }
         await loadOverview();
         onToast(t.adminPanel.backupImportedToast, 'success');
       } catch {
@@ -823,19 +1056,37 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     if (!user || busyTicketId) return;
     setBusyTicketId(tk.id);
     try {
-      const token = await getFreshIdToken(user);
-      if (!token) throw new Error('NO_TOKEN');
       const currentTags = tk.tags || [];
       const nextTags = currentTags.includes(tag)
         ? currentTags.filter((tg) => tg !== tag)
         : [...currentTags, tag];
-      const res = await updateAdminTicket(token, {
+      const reply = (ticketReplies[tk.id] ?? tk.adminReply ?? '').trim() || undefined;
+
+      if (!rtdbDirectMode) {
+        try {
+          const token = await getFreshIdToken(user);
+          if (!token) throw new Error('NO_TOKEN');
+          const res = await updateAdminTicket(token, {
+            id: tk.id,
+            action: 'update',
+            tags: nextTags,
+            reply,
+          });
+          setOverview((prev) => (prev ? { ...prev, tickets: res.tickets } : prev));
+          return;
+        } catch (err) {
+          if (!shouldFallbackToDirectRtdb(err)) throw err;
+          setRtdbDirectMode(true);
+        }
+      }
+      const mutated = applyAdminTicketMutation(overview?.tickets || [], {
         id: tk.id,
         action: 'update',
         tags: nextTags,
-        reply: (ticketReplies[tk.id] ?? tk.adminReply ?? '').trim() || undefined,
+        reply,
       });
-      setOverview((prev) => (prev ? { ...prev, tickets: res.tickets } : prev));
+      await saveAdminTicketsMapToRtdb(mutated.tickets);
+      setOverview((prev) => (prev ? { ...prev, tickets: mutated.tickets } : prev));
     } catch {
       onToast(t.account.adminToggleError, 'error');
     } finally {
@@ -851,31 +1102,56 @@ export const AdminModal: React.FC<AdminModalProps> = ({
     if (!user || busyTicketId) return;
     setBusyTicketId(ticketId);
     try {
-      const token = await getFreshIdToken(user);
-      if (!token) throw new Error('NO_TOKEN');
       const reply = (ticketReplies[ticketId] || '').trim();
-      const res = await updateAdminTicket(token, {
-        id: ticketId,
-        action,
-        reply,
-        publishToBanner,
-      });
+      let updatedTickets: FeedbackTicket[] | null = null;
+      let updatedAnnouncement = undefined;
+
+      if (!rtdbDirectMode) {
+        try {
+          const token = await getFreshIdToken(user);
+          if (!token) throw new Error('NO_TOKEN');
+          const res = await updateAdminTicket(token, {
+            id: ticketId,
+            action,
+            reply,
+            publishToBanner,
+          });
+          updatedTickets = res.tickets;
+          updatedAnnouncement = res.announcement;
+        } catch (err) {
+          if (!shouldFallbackToDirectRtdb(err)) throw err;
+          setRtdbDirectMode(true);
+        }
+      }
+
+      if (!updatedTickets) {
+        const mutated = applyAdminTicketMutation(overview?.tickets || [], {
+          id: ticketId,
+          action,
+          reply,
+          publishToBanner,
+        });
+        updatedTickets = mutated.tickets;
+        updatedAnnouncement = mutated.announcement;
+        await saveAdminTicketsMapToRtdb(updatedTickets);
+      }
+
       setOverview((prev) =>
         prev
           ? {
               ...prev,
-              tickets: res.tickets,
-              ...(res.announcement ? { announcement: res.announcement } : {}),
+              tickets: updatedTickets!,
+              ...(updatedAnnouncement ? { announcement: updatedAnnouncement } : {}),
             }
           : prev
       );
-      if (res.announcement) {
-        setBannerEnabled(res.announcement.enabled);
-        setBannerTone(res.announcement.tone);
-        setBannerText(res.announcement.text);
-        onConfigSynced({ announcement: res.announcement });
+      if (updatedAnnouncement) {
+        setBannerEnabled(updatedAnnouncement.enabled);
+        setBannerTone(updatedAnnouncement.tone);
+        setBannerText(updatedAnnouncement.text);
+        onConfigSynced({ announcement: updatedAnnouncement });
         await setGlobalControlPatchInCloud(user, {
-          announcement: res.announcement,
+          announcement: updatedAnnouncement,
         }).catch(() => {});
       }
     } catch {
@@ -1059,7 +1335,26 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                     <span>{t.adminPanel.retryLoadBtn}</span>
                   </button>
                 </div>
-              ) : tab === 'overview' ? (
+              ) : (
+                <>
+                  {rtdbDirectMode && (
+                    <div
+                      role="status"
+                      className="p-3.5 rounded-lg border flex items-start gap-2.5 text-xs"
+                      style={{
+                        backgroundColor: 'var(--warning-bg)',
+                        borderColor: 'var(--warning-border)',
+                        color: 'var(--warning-text)',
+                      }}
+                    >
+                      <Database className="w-4 h-4 shrink-0 mt-0.5" />
+                      <div className="space-y-0.5 leading-relaxed">
+                        <div className="font-semibold">{t.adminPanel.rtdbDirectBannerTitle}</div>
+                        <p className="opacity-90">{t.adminPanel.rtdbDirectBannerDesc}</p>
+                      </div>
+                    </div>
+                  )}
+                  {tab === 'overview' ? (
                 <div className="space-y-6">
                   {/* Environment Status Strip */}
                   <section className="space-y-2.5">
@@ -3047,6 +3342,8 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                     )}
                   </section>
                 </div>
+              )}
+                </>
               )}
             </div>
           </motion.div>

@@ -726,3 +726,159 @@ export function buildAdminExportCsv(params: {
   return '\uFEFF' + rows.join('\r\n');
 }
 
+export function shouldFallbackToDirectRtdb(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err || '');
+  if (!msg) return false;
+  if (msg === 'HTTP_404' || msg === 'HTTP_405' || msg === 'HTTP_501') {
+    return true;
+  }
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes('failed to fetch') ||
+    lower.includes('networkerror') ||
+    lower.includes('load failed')
+  );
+}
+
+export function normalizeTicketsCollection(raw: unknown): FeedbackTicket[] {
+  if (!raw || typeof raw !== 'object') return [];
+  const values = Array.isArray(raw) ? raw : Object.values(raw as Record<string, unknown>);
+  return values
+    .filter((item): item is FeedbackTicket => {
+      if (!item || typeof item !== 'object') return false;
+      const obj = item as Partial<FeedbackTicket>;
+      return Boolean(obj.id && obj.text);
+    })
+    .map((tk): FeedbackTicket => {
+      const ticketType: 'bug' | 'idea' = tk.type === 'idea' ? 'idea' : 'bug';
+      const ticketStatus: 'open' | 'resolved' = tk.status === 'resolved' ? 'resolved' : 'open';
+      return {
+        ...tk,
+        id: String(tk.id),
+        type: ticketType,
+        text: String(tk.text),
+        authorLabel: String(tk.authorLabel || 'Пользователь'),
+        isGuest: Boolean(tk.isGuest),
+        lang: String(tk.lang || 'ru'),
+        appVersion: String(tk.appVersion || APP_VERSION),
+        status: ticketStatus,
+        tags: sanitizeTicketTags(tk.tags),
+        createdAt: typeof tk.createdAt === 'string' ? tk.createdAt : new Date().toISOString(),
+      };
+    })
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+    .slice(0, 100);
+}
+
+export function applyAdminTicketMutation(
+  tickets: FeedbackTicket[],
+  payload: {
+    id: string;
+    action: 'update' | 'resolve' | 'reopen' | 'delete';
+    reply?: string;
+    tags?: TicketTag[];
+    publishToBanner?: boolean;
+  }
+): { tickets: FeedbackTicket[]; announcement?: GlobalAnnouncement } {
+  const id = String(payload.id || '').trim();
+  if (payload.action === 'delete') {
+    return { tickets: tickets.filter((tk) => tk.id !== id) };
+  }
+  const cleanReply = typeof payload.reply === 'string' ? payload.reply.trim().slice(0, 500) : undefined;
+  const nowIso = new Date().toISOString();
+  const nextTickets = tickets.map((tk): FeedbackTicket => {
+    if (tk.id !== id) return tk;
+    const nextStatus: 'open' | 'resolved' =
+      payload.action === 'resolve' ? 'resolved' : payload.action === 'reopen' ? 'open' : tk.status;
+    return {
+      ...tk,
+      status: nextStatus,
+      tags: Array.isArray(payload.tags) ? sanitizeTicketTags(payload.tags) : tk.tags || [],
+      ...(cleanReply !== undefined
+        ? cleanReply
+          ? { adminReply: cleanReply }
+          : {}
+        : {}),
+      resolvedAt:
+        payload.action === 'resolve'
+          ? nowIso
+          : payload.action === 'reopen'
+          ? undefined
+          : tk.resolvedAt,
+    };
+  });
+
+  if (payload.publishToBanner && cleanReply) {
+    return {
+      tickets: nextTickets,
+      announcement: {
+        enabled: true,
+        text: cleanReply.slice(0, 240),
+        tone: 'info',
+        updatedAt: nowIso,
+      },
+    };
+  }
+  return { tickets: nextTickets };
+}
+
+export function sanitizeConfigBackupBundle(raw: unknown): {
+  aiSettings: Record<string, unknown>;
+  tickets?: FeedbackTicket[];
+} {
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('INVALID_BACKUP_BUNDLE');
+  }
+  const obj = raw as {
+    bundle?: unknown;
+    aiSettings?: unknown;
+    tickets?: unknown;
+  };
+  const source =
+    obj.bundle && typeof obj.bundle === 'object'
+      ? (obj.bundle as { aiSettings?: unknown; tickets?: unknown })
+      : obj;
+
+  if (!source.aiSettings || typeof source.aiSettings !== 'object') {
+    throw new Error('INVALID_BACKUP_BUNDLE');
+  }
+
+  const ai = source.aiSettings as Record<string, unknown>;
+  const sanitized: Record<string, unknown> = {};
+  if (typeof ai.sharedAiEnabled === 'boolean') sanitized.sharedAiEnabled = ai.sharedAiEnabled;
+  if (typeof ai.guestAiEnabled === 'boolean') sanitized.guestAiEnabled = ai.guestAiEnabled;
+  if (typeof ai.readOnlyMode === 'boolean') sanitized.readOnlyMode = ai.readOnlyMode;
+  if (typeof ai.keyRouteMode === 'string') sanitized.keyRouteMode = ai.keyRouteMode;
+  if (typeof ai.aiModelPreset === 'string') sanitized.aiModelPreset = ai.aiModelPreset;
+  if (ai.aiPromptStyle) sanitized.aiPromptStyle = sanitizeAiPromptStyle(ai.aiPromptStyle);
+  if (ai.uiDefaults) sanitized.uiDefaults = sanitizeUiDefaults(ai.uiDefaults);
+  if (typeof ai.minClientVersion === 'string') {
+    sanitized.minClientVersion = sanitizeVersionString(ai.minClientVersion);
+  }
+  if (typeof ai.dailyDigestHourUtc === 'number' && Number.isFinite(ai.dailyDigestHourUtc)) {
+    const h = Math.floor(ai.dailyDigestHourUtc);
+    if (h >= 0 && h <= 23) sanitized.dailyDigestHourUtc = h;
+  }
+  if (Array.isArray(ai.extraAdminUids)) {
+    sanitized.extraAdminUids = Array.from(
+      new Set(ai.extraAdminUids.map((v) => String(v || '').trim()).filter((v) => v && !v.includes('@')))
+    ).slice(0, 25);
+  }
+  if (Array.isArray(ai.extraAdminEmails)) {
+    sanitized.extraAdminEmails = Array.from(
+      new Set(
+        ai.extraAdminEmails
+          .map((v) => String(v || '').trim().toLowerCase())
+          .filter((v) => v.includes('@'))
+      )
+    ).slice(0, 25);
+  }
+  if (ai.announcement) sanitized.announcement = sanitizeAnnouncement(ai.announcement);
+  if (ai.sampleTemplate) sanitized.sampleTemplate = sanitizeSampleTemplate(ai.sampleTemplate);
+  if (ai.poll) sanitized.poll = sanitizePoll(ai.poll);
+
+  const tickets = source.tickets ? normalizeTicketsCollection(source.tickets) : undefined;
+  return { aiSettings: sanitized, ...(tickets ? { tickets } : {}) };
+}
+
+

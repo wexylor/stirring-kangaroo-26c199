@@ -438,7 +438,12 @@ export async function fetchMyFeedbackTickets(
       ? `?ids=${encodeURIComponent(guestTicketIds.slice(0, 30).join(','))}`
       : '';
   const res = await fetch(`/api/feedback/my${qs}`, { headers });
-  if (!res.ok) return [];
+  if (!res.ok) {
+    if (res.status === 404 || res.status === 405 || res.status === 501) {
+      throw new Error(`HTTP_${res.status}`);
+    }
+    return [];
+  }
   const data = (await res.json().catch(() => null)) as {
     ok?: boolean;
     tickets?: UserFeedbackTicketSummary[];

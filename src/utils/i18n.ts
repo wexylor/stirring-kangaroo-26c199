@@ -337,6 +337,9 @@ export interface Translations {
     loadErrorTitle: string;
     loadErrorDesc: string;
     retryLoadBtn: string;
+    rtdbDirectBannerTitle: string;
+    rtdbDirectBannerDesc: string;
+    serverOnlyActionToast: string;
     envTitle: string;
     uptimeLabel: string;
     modelLabel: string;
@@ -1018,6 +1021,9 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       loadErrorTitle: 'Не удалось загрузить данные админ-панели',
       loadErrorDesc: 'Проверьте подключение к интернету и права администратора для текущего аккаунта.',
       retryLoadBtn: 'Повторить загрузку',
+      rtdbDirectBannerTitle: 'Прямой режим Firebase RTDB (API-сервер недоступен)',
+      rtdbDirectBannerDesc: 'На этом адресе нет серверных /api маршрутов (HTTP 404). Управление флагами, моделью, баннером, опросом, шаблоном, доступом, бэкапами и тикетами работает напрямую через Firebase; серверная телеметрия и проверка ключей Gemini доступны только при запуске с Node-сервером.',
+      serverOnlyActionToast: 'Эта функция требует запущенный Node-сервер (/api/*) и недоступна в статическом режиме.',
       envTitle: 'Статус окружения',
       uptimeLabel: 'Аптайм сервера',
       modelLabel: 'Модель Gemini',
@@ -1726,6 +1732,9 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       loadErrorTitle: 'Әкімші панелінің деректерін жүктеу мүмкін болмады',
       loadErrorDesc: 'Интернет байланысын және ағымдағы аккаунттың әкімші құқығын тексеріңіз.',
       retryLoadBtn: 'Қайта жүктеу',
+      rtdbDirectBannerTitle: 'Firebase RTDB тікелей режимі (API сервері қолжетімсіз)',
+      rtdbDirectBannerDesc: 'Бұл мекенжайда серверлік /api маршруттары жоқ (HTTP 404). Жалаушалар, модель, хабарландыру, сауалнама, үлгі, қолжетімділік, бэкап және өтініштер Firebase арқылы тікелей сақталады; сервер телеметриясы мен Gemini кілттерін тексеру тек Node-сервермен жұмыс істейді.',
+      serverOnlyActionToast: 'Бұл мүмкіндік Node-серверді (/api/*) қажет етеді және статикалық режимде қолжетімсіз.',
       envTitle: 'Орта күйі',
       uptimeLabel: 'Сервер аптаймы',
       modelLabel: 'Gemini моделі',
@@ -2432,6 +2441,9 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       loadErrorTitle: 'Could not load Admin Console',
       loadErrorDesc: 'Check your connection and make sure this account has administrator access.',
       retryLoadBtn: 'Retry loading',
+      rtdbDirectBannerTitle: 'Direct Firebase RTDB Mode (Server API Unavailable)',
+      rtdbDirectBannerDesc: 'Backend /api routes returned HTTP 404 on this host. Flags, model preset, banner, poll, starter template, admin access, config backups, and tickets save directly to Firebase RTDB; server telemetry and Gemini key probing require running with the Node server.',
+      serverOnlyActionToast: 'This action requires the Node API server (/api/*) and is unavailable on static hosting.',
       envTitle: 'Environment Status',
       uptimeLabel: 'Server Uptime',
       modelLabel: 'Gemini Model',

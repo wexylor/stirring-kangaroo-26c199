@@ -1,14 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  applyAdminTicketMutation,
   buildAdminExportCsv,
   computeErrorBreakdown,
   createEmptyActivityHeatmap,
   isClientVersionOutdated,
+  normalizeTicketsCollection,
   recordActivitySlot,
   sanitizeAiPromptStyle,
+  sanitizeConfigBackupBundle,
   sanitizeTicketTags,
   sanitizeUiDefaults,
+  shouldFallbackToDirectRtdb,
 } from './adminOps.ts';
 
 test('computeErrorBreakdown categorizes quota, timeout, authKey, and network/other errors', () => {
@@ -149,3 +153,62 @@ test('buildAdminExportCsv includes UTF-8 BOM and properly quotes cells', () => {
   assert.ok(csv.startsWith('\uFEFF'));
   assert.ok(csv.includes('"Alex: Bug with ""quotes"", here"'));
 });
+
+test('shouldFallbackToDirectRtdb detects 404/network missing backend but ignores auth denials', () => {
+  assert.equal(shouldFallbackToDirectRtdb(new Error('HTTP_404')), true);
+  assert.equal(shouldFallbackToDirectRtdb(new Error('HTTP_405')), true);
+  assert.equal(shouldFallbackToDirectRtdb(new TypeError('Failed to fetch')), true);
+  assert.equal(shouldFallbackToDirectRtdb(new Error('HTTP_401')), false);
+  assert.equal(shouldFallbackToDirectRtdb(new Error('HTTP_403')), false);
+  assert.equal(shouldFallbackToDirectRtdb(new Error('FORBIDDEN')), false);
+});
+
+test('normalizeTicketsCollection, applyAdminTicketMutation, and sanitizeConfigBackupBundle work cleanly', () => {
+  const normalized = normalizeTicketsCollection({
+    t1: {
+      id: 't1',
+      type: 'bug',
+      text: 'Issue 1',
+      authorLabel: 'User',
+      createdAt: '2026-11-24T10:00:00Z',
+      status: 'open',
+    },
+    t2: {
+      id: 't2',
+      type: 'idea',
+      text: 'Idea 2',
+      authorLabel: 'User 2',
+      createdAt: '2026-11-25T10:00:00Z',
+      status: 'open',
+    },
+  });
+  assert.equal(normalized.length, 2);
+  assert.equal(normalized[0].id, 't2');
+
+  const resolved = applyAdminTicketMutation(normalized, {
+    id: 't1',
+    action: 'resolve',
+    reply: 'Fixed now!',
+    tags: ['fixed'],
+    publishToBanner: true,
+  });
+  const t1 = resolved.tickets.find((t) => t.id === 't1');
+  assert.equal(t1?.status, 'resolved');
+  assert.equal(t1?.adminReply, 'Fixed now!');
+  assert.deepEqual(t1?.tags, ['fixed']);
+  assert.equal(resolved.announcement?.enabled, true);
+  assert.equal(resolved.announcement?.text, 'Fixed now!');
+
+  const bundle = sanitizeConfigBackupBundle({
+    aiSettings: {
+      sharedAiEnabled: false,
+      aiModelPreset: 'accurate',
+      extraAdminEmails: ['Admin@Example.com'],
+    },
+    tickets: normalized,
+  });
+  assert.equal(bundle.aiSettings.sharedAiEnabled, false);
+  assert.deepEqual(bundle.aiSettings.extraAdminEmails, ['admin@example.com']);
+  assert.equal(bundle.tickets?.length, 2);
+});
+
