@@ -82,11 +82,15 @@ import {
 import { DEFAULT_GROUPS } from '../data/sampleData';
 import { formatDateTime } from '../utils/storage';
 
+import type { KeepAliveStatus } from '../utils/keepAlive';
+
 type AdminTab = 'overview' | 'limits' | 'access' | 'journal';
 
 interface AdminModalProps {
   open: boolean;
   user: User | null;
+  keepAliveStatus?: KeepAliveStatus;
+  onPingKeepAlive?: () => Promise<boolean>;
   onClose: () => void;
   onConfigSynced: (patch: {
     sharedAiEnabled?: boolean;
@@ -107,6 +111,8 @@ interface AdminModalProps {
 export const AdminModal: React.FC<AdminModalProps> = ({
   open,
   user,
+  keepAliveStatus,
+  onPingKeepAlive,
   onClose,
   onConfigSynced,
   onToast,
@@ -125,6 +131,7 @@ export const AdminModal: React.FC<AdminModalProps> = ({
   const [savingFlags, setSavingFlags] = useState(false);
   const [checkingKeys, setCheckingKeys] = useState(false);
   const [updatingRoute, setUpdatingRoute] = useState(false);
+  const [pingingKeepAlive, setPingingKeepAlive] = useState(false);
 
   // Banner form
   const [bannerEnabled, setBannerEnabled] = useState(false);
@@ -1452,6 +1459,68 @@ export const AdminModal: React.FC<AdminModalProps> = ({
                         </span>
                       </button>
                     </div>
+
+                    {/* Keep-Alive (anti-sleep) status strip */}
+                    {keepAliveStatus && (
+                      <div
+                        className="p-3 rounded-lg border flex flex-wrap items-center justify-between gap-3 text-xs"
+                        style={{
+                          backgroundColor: 'var(--bg-elevated)',
+                          borderColor: 'var(--border-color)',
+                        }}
+                      >
+                        <div className="min-w-0 space-y-0.5">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-semibold">{t.adminPanel.keepAliveTitle}</span>
+                            <span
+                              className="font-mono font-semibold tabular-nums"
+                              style={{
+                                color:
+                                  keepAliveStatus.lastStatus === 'ok'
+                                    ? 'var(--success-text)'
+                                    : keepAliveStatus.lastStatus === 'error'
+                                    ? 'var(--warning-text)'
+                                    : 'var(--text-muted)',
+                              }}
+                            >
+                              {keepAliveStatus.lastStatus === 'ok'
+                                ? t.adminPanel.keepAliveOk(
+                                    keepAliveStatus.lastLatencyMs ?? 0,
+                                    keepAliveStatus.pingCount
+                                  )
+                                : keepAliveStatus.lastStatus === 'error'
+                                ? `${t.adminPanel.serviceFail} (${keepAliveStatus.pingCount})`
+                                : t.adminPanel.keepAlivePending}
+                            </span>
+                          </div>
+                          <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                            {t.adminPanel.keepAliveDesc}
+                          </p>
+                        </div>
+                        {onPingKeepAlive && (
+                          <button
+                            type="button"
+                            disabled={pingingKeepAlive}
+                            onClick={async () => {
+                              setPingingKeepAlive(true);
+                              try {
+                                await onPingKeepAlive();
+                              } finally {
+                                setPingingKeepAlive(false);
+                              }
+                            }}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded border text-xs font-medium hover:bg-[var(--bg-hover)] disabled:opacity-50 shrink-0"
+                            style={{
+                              backgroundColor: 'var(--bg-surface)',
+                              borderColor: 'var(--border-color)',
+                            }}
+                          >
+                            <RefreshCw className={`w-3 h-3 ${pingingKeepAlive ? 'animate-spin' : ''}`} />
+                            <span>{t.adminPanel.keepAliveNowBtn}</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
 
                     {/* Extended Services Health */}
                     <div

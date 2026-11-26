@@ -470,6 +470,11 @@ export interface Translations {
     serviceFail: string;
     probeServicesBtn: string;
     probingServicesBtn: string;
+    keepAliveTitle: string;
+    keepAliveDesc: string;
+    keepAliveNowBtn: string;
+    keepAliveOk: (ms: number, count: number) => string;
+    keepAlivePending: string;
     errorsBreakdownTitle: string;
     errQuota429: string;
     errTimeout503: string;
@@ -1167,6 +1172,11 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       serviceFail: 'Сбой',
       probeServicesBtn: 'Проверить всё',
       probingServicesBtn: 'Пинг...',
+      keepAliveTitle: 'Keep-alive (anti-sleep) раз в 4 мин',
+      keepAliveDesc: 'Пока вкладка открыта, браузер тихо пингует /api/health, чтобы Render не засыпал.',
+      keepAliveNowBtn: 'Пинг сейчас',
+      keepAliveOk: (ms: number, count: number) => `Активен · ${ms} ms · пингов: ${count}`,
+      keepAlivePending: 'Ожидание отклика сервера...',
       errorsBreakdownTitle: 'Ошибки за всё время по кодам',
       errQuota429: '429 Квота',
       errTimeout503: 'Таймаут / 503',
@@ -1878,6 +1888,11 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       serviceFail: 'Қате',
       probeServicesBtn: 'Барлығын тексеру',
       probingServicesBtn: 'Пинг...',
+      keepAliveTitle: 'Keep-alive (anti-sleep) 4 мин сайын',
+      keepAliveDesc: 'Қойынды ашық тұрғанда браузер Render ұйықтап қалмауы үшін /api/health жібереді.',
+      keepAliveNowBtn: 'Қазір пинг',
+      keepAliveOk: (ms: number, count: number) => `Белсенді · ${ms} ms · пинг: ${count}`,
+      keepAlivePending: 'Сервер жауабы күтілуде...',
       errorsBreakdownTitle: 'Қате кодтары бойынша бөлініс',
       errQuota429: '429 Лимит',
       errTimeout503: 'Таймаут / 503',
@@ -2587,6 +2602,11 @@ export const TRANSLATIONS: Record<AppLang, Translations> = {
       serviceFail: 'Fail',
       probeServicesBtn: 'Probe all',
       probingServicesBtn: 'Probing...',
+      keepAliveTitle: 'Keep-alive heartbeat (every 4 min)',
+      keepAliveDesc: 'Pings /api/health while the tab is open to prevent Render free-tier sleep.',
+      keepAliveNowBtn: 'Ping now',
+      keepAliveOk: (ms: number, count: number) => `Active · ${ms} ms · pings: ${count}`,
+      keepAlivePending: 'Waiting for server response...',
       errorsBreakdownTitle: 'Errors breakdown by code',
       errQuota429: '429 Quota',
       errTimeout503: 'Timeout / 503',

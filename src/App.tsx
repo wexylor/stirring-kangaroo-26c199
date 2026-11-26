@@ -154,6 +154,14 @@ import {
   toastVariants,
   windowEnterVariants,
 } from './utils/motionPresets';
+import {
+  KEEP_ALIVE_INTERVAL_MS,
+  createInitialKeepAliveStatus,
+  recordKeepAliveResult,
+  sendServerHealthPing,
+  shouldSendKeepAlivePing,
+  type KeepAliveStatus,
+} from './utils/keepAlive';
 
 interface PendingSyncQueue {
   upsertIds: string[];
@@ -263,6 +271,11 @@ export default function App() {
 
   const [activeEngine, setActiveEngine] = useState<'gemini' | 'local'>('local');
   const [cloudStatus, setCloudStatus] = useState<CloudSyncStatus>('local');
+  const [keepAliveStatus, setKeepAliveStatus] = useState<KeepAliveStatus>(() =>
+    createInitialKeepAliveStatus()
+  );
+  const keepAliveLastPingRef = useRef<number | null>(null);
+  const keepAliveInFlightRef = useRef<boolean>(false);
   const [pendingQueue, setPendingQueue] = useState<PendingSyncQueue>({
     upsertIds: [],
     deleteIds: [],
@@ -405,6 +418,63 @@ export default function App() {
       window.removeEventListener('online', handleResumeSync);
     };
   }, [currentUser, authRevision]);
+
+  const runKeepAlivePing = useCallback(async (force = false) => {
+    if (keepAliveInFlightRef.current) return false;
+    const isVisible =
+      typeof document === 'undefined' ? true : document.visibilityState === 'visible';
+    const isOnline = typeof navigator === 'undefined' ? true : navigator.onLine;
+    const nowMs = Date.now();
+    if (
+      !shouldSendKeepAlivePing({
+        nowMs,
+        lastPingAtMs: keepAliveLastPingRef.current,
+        isVisible,
+        isOnline,
+        force,
+      })
+    ) {
+      return false;
+    }
+
+    keepAliveInFlightRef.current = true;
+    try {
+      const result = await sendServerHealthPing();
+      const finishedAt = Date.now();
+      keepAliveLastPingRef.current = finishedAt;
+      setKeepAliveStatus((prev) =>
+        recordKeepAliveResult(prev, {
+          nowMs: finishedAt,
+          ok: result.ok,
+          latencyMs: result.latencyMs,
+          serverUptimeSec: result.serverUptimeSec,
+        })
+      );
+      return result.ok;
+    } finally {
+      keepAliveInFlightRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    void runKeepAlivePing(true);
+    const intervalId = window.setInterval(() => {
+      void runKeepAlivePing(false);
+    }, KEEP_ALIVE_INTERVAL_MS);
+
+    const handleWakePing = () => {
+      void runKeepAlivePing(false);
+    };
+    window.addEventListener('focus', handleWakePing);
+    window.addEventListener('online', handleWakePing);
+    document.addEventListener('visibilitychange', handleWakePing);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleWakePing);
+      window.removeEventListener('online', handleWakePing);
+      document.removeEventListener('visibilitychange', handleWakePing);
+    };
+  }, [runKeepAlivePing]);
 
   useEffect(() => {
     let active = true;
@@ -2559,6 +2629,8 @@ export default function App() {
           <AdminModal
             open={adminModalOpen}
             user={currentUser}
+            keepAliveStatus={keepAliveStatus}
+            onPingKeepAlive={() => runKeepAlivePing(true)}
             onClose={() => setAdminModalOpen(false)}
             onConfigSynced={(patch) => {
               if (typeof patch.sharedAiEnabled === 'boolean') {

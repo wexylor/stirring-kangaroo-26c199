@@ -1011,6 +1011,7 @@ async function runScheduledDailyDigestTick() {
 
 async function startServer() {
   const app = express();
+  app.set('trust proxy', 1);
   const httpServer = createHttpServer(app);
   app.use(express.json({ limit: '1mb' }));
 
@@ -1021,10 +1022,12 @@ async function startServer() {
   digestSchedulerTimer.unref?.();
 
   app.get('/api/health', (_req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.json({ ok: true, uptimeSec: Math.floor((Date.now() - SERVER_STARTED_AT_MS) / 1000) });
   });
 
   app.get('/api/ai/status', async (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     trackVisitorFromReq(req);
     const [state, bearerUser] = await Promise.all([
       getEffectiveControlState(),
